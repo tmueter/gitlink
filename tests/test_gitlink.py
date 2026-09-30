@@ -375,6 +375,9 @@ class GitLabAccount(SandboxHome):
         self.assertTrue(out["ok"])
         self.assertEqual((out["result"]["account"], out["result"]["mode"]), ("tmueter", "konto"))
         self.assertEqual(self.scans, [("10.0.0.5", 22)])  # Host-Key bleibt gepinnt, kein zweiter Scan
+        self.cli("einrichten", "--url", "https://gitlab.example.org", "--plattform", "gitlab",
+                 "--ssh-hostname", "10.0.0.5", "--ssh-port", "10022", "--client", "box")
+        self.assertEqual(self.scans, [("10.0.0.5", 22), ("10.0.0.5", 10022)])  # neuer Port: neu pinnen
         self.assertFalse((gitlink.inst_dir("gitlab-example-org-443") / "token").exists())  # kein Token
 
     def test_connect_writes_commit_rule_and_origin(self):

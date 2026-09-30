@@ -1009,12 +1009,13 @@ def setup_gitlab(args, cfg, inst, client, warnings):
     if not keyfile.exists():
         run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", f"{NAME}-{client}@{inst}", "-f", str(keyfile)])
     pub = " ".join(Path(str(keyfile) + ".pub").read_text().split()[:2])
-    if (cfg.get("ssh_hostname"), cfg.get("ssh_port")) != (hostname, port) or not cfg.get("host_keys"):
+    if cfg.get("pinned") != [hostname, port] or not cfg.get("host_keys"):
         keys = keyscan(Host(), hostname, port)
         if not keys:
             raise Fail("ssh_unreachable", {"host": hostname, "port": port}, host=hostname, port=port, err="ssh-keyscan")
         update_known_hosts(inst, keys)
         cfg["host_keys"] = fingerprints(keys)
+        cfg["pinned"] = [hostname, port]
         if not is_loopback(hostname):
             warnings.append(t("w_hostkey_tofu", host=hostname, port=port,
                               url=f"{cfg['url']}/help/instance_configuration#ssh-host-keys-fingerprints"))
@@ -1026,7 +1027,7 @@ def setup_gitlab(args, cfg, inst, client, warnings):
     if not account:
         url = cfg["url"] + GITLAB_KEYS_PATH
         raise Fail("ssh_key_required", {"public_key": pub, "title": f"{NAME}-{client}", "add_key_url": url,
-                                        "host_key_fingerprints": cfg["host_keys"]},
+                                        "host_key_fingerprints": cfg["host_keys"], "warnings": warnings},
                    url=url, title=f"{NAME}-{client}")
     cfg["account"] = account
     save_config(inst, cfg)
