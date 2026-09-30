@@ -186,6 +186,7 @@ Die Entscheidungen stammen aus der zweiten Map „Wayfinder: Skill für Forgejo 
   - Schlüssel über `/users/:id/keys`, Token pro Client über `/users/:id/personal_access_tokens` (Scope `api`); läuft er nach GitLab-Regeln ab, meldet der Skill das Datum.
   - Host-Key: Es gibt keinen API-Endpunkt. Das SSH-Ziel (Host und Port) liest der Skill aus `ssh_url_to_repo` eines Projekts. Mit `--ssh-host` scannt der Host der Instanz sich selbst über Loopback; ohne Zugang zum Host fragt der Skill die Keys direkt beim SSH-Ziel ab und warnt, dass er ihnen beim ersten Kontakt vertraut (TOFU), mit Verweis auf die Fingerprint-Seite der Instanz.
   - Löschen ist zweistufig (markieren, dann `permanently_remove`); lehnt die Instanz das ab, meldet der Skill es.
+  - Interne Zertifizierungsstelle: `einrichten --ca-cert <pem>` legt das Zertifikat als `ca.pem` in das Instanzverzeichnis; alle Aufrufe an die Instanz vertrauen ihm zusätzlich, die MCP-Starter setzen `NODE_EXTRA_CA_CERTS` und `SSL_CERT_FILE`. Das System wird nicht verändert. Gilt für alle Plattformen.
   - MCP-Server **`@zereight/mcp-gitlab`** in fester Version per `npx`; setzt Node.js ≥ 18.17 voraus, sonst Warnung und kein MCP-Server.
   - **[Unsicher]** Nicht gegen eine echte GitLab-Instanz getestet, nur gegen einen nachgebauten API-Server.
 - **Abhängigkeiten:** Unterbefehl `abhaengigkeit` setzt, entfernt und listet Issue-Abhängigkeiten per REST als Bot, auf allen Plattformen gleich. Bei GitLab über Issue-Links `is_blocked_by` (laut Doku nur Premium/Ultimate).

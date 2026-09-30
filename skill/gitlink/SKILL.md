@@ -36,6 +36,7 @@ Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. D
 
      Warte auf die Bestätigung und wiederhole dann `einrichten`.
    - **Anmelde-Proxy:** Endet der Lauf mit `auth_proxy`, steht vor der Instanz ein Proxy mit eigener Anmeldung (z. B. Microsoft Entra). Kein Token hilft dagegen. Erkläre das und frage nach einem Zugang ohne Proxy: VPN mit interner Adresse oder ein Rechner im Netz der Instanz (`--ssh-host`). Ist die Plattform bekannt, aber die Erkennung scheitert, übergib `--plattform gitlab`.
+   - **Interne Zertifizierungsstelle:** Scheitert HTTPS an einem unbekannten Zertifikat (die Instanz wird dann nicht gefunden), frage nach dem Zertifikat der internen Stelle als PEM-Datei und übergib es mit `--ca-cert <datei>`. Der Skill vertraut ihm nur für diese Instanz; das System bleibt unverändert.
 4. **Abgleich:** Enthält `result.missing_repos` Einträge, zeige die Liste und frage, welche Repos Claude nutzen darf. Für die gewählten: `freigeben <eigentümer/repo> …`.
 5. **Abschluss:** fasse zusammen (Plattform, Instanz, Bot-Konto, SSH-Alias, MCP-Server). Den Neustart von Claude Code erwähnst du nur, wenn eine Warnung ihn verlangt.
 6. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).

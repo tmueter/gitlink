@@ -422,6 +422,43 @@ class Detection(unittest.TestCase):
         self.assertEqual(gitlink.detect_platform(other), (None, None))
 
 
+class InternalCa(SandboxHome):
+    """HTTPS mit einem Zertifikat einer eigenen Zertifizierungsstelle, wie bei einer Firmen-PKI."""
+
+    def make_pki(self):
+        d = self.home / "pki"
+        d.mkdir()
+        o = ["openssl"]
+        gitlink.run(o + ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=Test Root CA",
+                         "-keyout", str(d / "ca.key"), "-out", str(d / "ca.pem")])
+        gitlink.run(o + ["req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=localhost",
+                         "-keyout", str(d / "srv.key"), "-out", str(d / "srv.csr")])
+        (d / "ext").write_text("subjectAltName=DNS:localhost\n")
+        gitlink.run(o + ["x509", "-req", "-in", str(d / "srv.csr"), "-CA", str(d / "ca.pem"), "-CAkey", str(d / "ca.key"),
+                         "-CAcreateserial", "-days", "2", "-extfile", str(d / "ext"), "-out", str(d / "srv.pem")])
+        return d
+
+    def test_ca_cert_makes_internal_https_trusted(self):
+        import ssl
+        d = self.make_pki()
+        srv = FakeServer(lambda m, path, q, b, h: (401, {"message": "401 Unauthorized"}) if path == "/api/v4/version"
+                         else (404, {"message": "404"}))
+        self.addCleanup(srv.close)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(d / "srv.pem"), str(d / "srv.key"))
+        srv.server.socket = ctx.wrap_socket(srv.server.socket, server_side=True)
+        url = srv.url.replace("http://127.0.0.1", "https://localhost")
+        self.addCleanup(gitlink.use_ca, None)
+        gitlink.use_ca(None)
+        self.assertEqual(gitlink.detect_platform(url), (None, None))  # unbekannte Stelle: kein Vertrauen
+        gitlink.use_ca(d / "ca.pem")
+        self.assertEqual(gitlink.detect_platform(url), ("gitlab", None))
+
+    def test_starter_exports_ca_for_mcp_servers(self):
+        path, _ = gitlink.write_starter("x", {"mcp_url": "https://g", "ca_cert": "/c/ca.pem"}, "exec /bin/a")
+        self.assertIn("export NODE_EXTRA_CA_CERTS=/c/ca.pem SSL_CERT_FILE=/c/ca.pem\n", path.read_text())
+
+
 # --------------------------------------------------------------------------- GitLab-Adapter
 
 class GitLabAdapter(SandboxHome):

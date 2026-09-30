@@ -24,6 +24,7 @@ import secrets
 import shlex
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -50,6 +51,7 @@ MD_BEGIN, MD_END = f"<!-- {NAME}:begin -->", f"<!-- {NAME}:end -->"
 LEGACY_MD = (f"<!-- {LEGACY}:begin -->", f"<!-- {LEGACY}:end -->")
 
 LANG = "de"
+SSL_CTX = None  # gesetzt durch use_ca(), wenn eine Instanz eine interne Zertifizierungsstelle nutzt
 
 MSG = {
     "no_docker": {
@@ -448,6 +450,15 @@ def is_loopback(hostname):
         return False
 
 
+def use_ca(path):
+    """Vertraut zusätzlich der Zertifizierungsstelle in `path` (nur für Aufrufe an die Instanz)."""
+    global SSL_CTX
+    SSL_CTX = None
+    if path:
+        SSL_CTX = ssl.create_default_context()
+        SSL_CTX.load_verify_locations(cafile=str(path))
+
+
 def check_transport(url):
     u = urllib.parse.urlparse(url)
     if u.scheme == "http" and not is_loopback(u.hostname or ""):
@@ -483,7 +494,7 @@ class Api:
         for k, v in self.headers().items():
             req.add_header(k, v)
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
                 status, raw = r.status, r.read()
                 check_redirect(self.base, r.geturl())
         except urllib.error.HTTPError as e:
@@ -524,7 +535,7 @@ def check_redirect(start, final):
 def get_json(url, timeout=5):
     """(status, json) ohne Authentifizierung; (None, None) bei Netzfehler."""
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
+        with urllib.request.urlopen(url, timeout=timeout, context=SSL_CTX) as r:
             check_redirect(url, r.geturl())
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
@@ -678,6 +689,9 @@ def write_starter(inst, cfg, body):
     tunnel = ""
     if cfg.get("ssh_host"):
         tunnel = TUNNEL.format(host=shlex.quote(cfg["ssh_host"]), lport=cfg["mcp_port"], rport=cfg["web_port"])
+    if cfg.get("ca_cert"):
+        ca = shlex.quote(cfg["ca_cert"])  # Node (GitLab-MCP) ergänzt, Go (forgejo-/gitea-mcp) ersetzt den Speicher
+        tunnel += f"export NODE_EXTRA_CA_CERTS={ca} SSL_CERT_FILE={ca}\n"
     path = inst_dir(inst) / "start-mcp"
     content = STARTER.format(name=NAME, inst=inst, tunnel=tunnel, body=body)
     changed = not path.exists() or path.read_text() != content
@@ -1155,6 +1169,7 @@ PLATFORMS = {"forgejo": Forgejo, "gitea": Gitea, "gitlab": GitLab}
 
 
 def adapter(cfg, operator=None):
+    use_ca(cfg.get("ca_cert"))
     return PLATFORMS[cfg.get("platform", "forgejo")](cfg, operator)
 
 
@@ -1378,6 +1393,11 @@ def cmd_setup(args):
     remote = args.ssh_host
     inst = valid_name(args.instanz or slug(f"{remote.split('@')[-1] if remote else u.hostname}-{web_port}"))
     old = load_config(inst) or {}
+    ca = old.get("ca_cert")
+    if args.ca_cert:
+        ca = str(inst_dir(inst) / "ca.pem")
+        write_private(Path(ca), Path(args.ca_cert).expanduser().read_text())
+    use_ca(ca)
     plat = args.platform or old.get("platform")
     if plat:
         detected = plat  # vorgegeben oder gespeichert; hinter einem Anmelde-Proxy geht Erkennung nicht
@@ -1393,7 +1413,7 @@ def cmd_setup(args):
         raise Fail("unsupported_platform", url=url)
     plat = plat or detected
     cfg = {**old, "url": url, "platform": plat, "instance": inst, "ssh_host": remote, "web_port": web_port,
-           "client": client, "bot": BOT}
+           "client": client, "bot": BOT, "ca_cert": ca}
     if args.ssh_port:
         cfg["ssh_port"] = args.ssh_port
     if plat in ("forgejo", "gitea"):
@@ -1604,6 +1624,7 @@ def cmd_dependency(args):
     notes = migrate_legacy()
     inst, cfg = pick_instance(args.instanz)
     token = (inst_dir(inst) / "token").read_text().strip()
+    use_ca(cfg.get("ca_cert"))
     cls = PLATFORMS[cfg.get("platform", "forgejo")]
     tunnel = Tunnel(cfg["ssh_host"], cfg["web_port"], cfg.get("mcp_port")) if cfg.get("ssh_host") else None
     try:
@@ -1646,6 +1667,7 @@ def build_parser():
     s.add_argument("--plattform", "--platform", dest="platform", choices=list(PLATFORMS))
     s.add_argument("--ssh-host")
     s.add_argument("--ssh-port", type=int)
+    s.add_argument("--ca-cert", help="Zertifikat einer internen Zertifizierungsstelle (PEM) / internal CA certificate")
     s.add_argument("--container")
     s.add_argument("--admin-exec")
     s.add_argument("--operator")
