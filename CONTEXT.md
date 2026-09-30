@@ -43,7 +43,7 @@ _Vermeiden_: Projekt im Sinne des Arbeitsverzeichnisses oder des Vorhabens
 Die automatische Gruppierung der Issues eines Repos; der Skill legt ihn an, und Claude ordnet jedes neue Issue ihm zu.
 
 **Zero-Touch**:
-Erfordert vom Betreiber keine manuelle Handlung über das Starten der Installation hinaus.
+Erfordert vom Betreiber keine manuelle Handlung über den Skill-Aufruf, die Rückfragen des Skills und das Anlegen des Projektboards hinaus.
 
 ## Beziehungen
 
@@ -54,6 +54,5 @@ Erfordert vom Betreiber keine manuelle Handlung über das Starten der Installati
 - Ein **Claude-Client** pinnt den Host-Key jeder **Instanz**, mit der er spricht
 
 ## Markierte Mehrdeutigkeiten
-
 
 - "API-Key" in der ursprünglichen Idee: gemeint ist ein Forgejo-Access-Token des **Bot-Kontos**; ob er sich auf ein Repository beschränken lässt, war offen — Forgejo 16 unterstützt repo-beschränkte Tokens über die API.
