@@ -117,6 +117,40 @@ class McpRegistration(SandboxHome):
         self.assertTrue(igit.write_starter("x", cfg, "/opt/forgejo-mcp")[1])
 
 
+class LocalDirBlockers(SandboxHome):
+    REMOTE = "igit-x:dreamer/probe.git"
+
+    def git(self, *args):
+        igit.run(["git", "-C", str(self.dir), "-c", "user.name=t", "-c", "user.email=t@t"] + list(args))
+
+    def setUp(self):
+        super().setUp()
+        self.dir = self.home / "probe"
+        self.dir.mkdir()
+        self.git("init", "-q", "-b", "main")
+        self.git("remote", "add", "origin", self.REMOTE)
+
+    def test_fresh_repo_with_only_igit_note_is_deletable(self):
+        (self.dir / "CLAUDE.md").write_text("<!-- igit:begin -->\nHinweis\n<!-- igit:end -->\n")
+        self.assertEqual(igit.local_dir_blockers(self.dir, self.REMOTE), [])
+
+    def test_own_content_in_claude_md_blocks(self):
+        (self.dir / "CLAUDE.md").write_text("Eigene Notiz\n<!-- igit:begin -->\nHinweis\n<!-- igit:end -->\n")
+        self.assertEqual(igit.local_dir_blockers(self.dir, self.REMOTE), [igit.t("r_dirty")])
+
+    def test_unpushed_commit_and_other_origin_block(self):
+        (self.dir / "a.txt").write_text("x")
+        self.git("add", "a.txt")
+        self.git("commit", "-qm", "a")
+        self.assertEqual(igit.local_dir_blockers(self.dir, "igit-x:dreamer/anders.git"),
+                         [igit.t("r_other_origin"), igit.t("r_unpushed")])
+
+    def test_non_git_directory_blocks(self):
+        plain = self.home / "plain"
+        plain.mkdir()
+        self.assertEqual(igit.local_dir_blockers(plain, self.REMOTE), [igit.t("r_not_git")])
+
+
 class Validation(unittest.TestCase):
     def test_names(self):
         self.assertEqual(igit.valid_name("localhost-3000"), "localhost-3000")

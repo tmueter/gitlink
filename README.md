@@ -48,6 +48,8 @@ In Claude Code genügt eine Aufforderung in eigenen Worten, zum Beispiel „Rich
 |---|---|
 | `/igit einrichten` bzw. `/igit setup` | Findet eine laufende Instanz oder installiert auf Wunsch eine neue. Richtet Bot-Konto, Client-Schlüssel, Host-Key-Pinning, Token und den MCP-Server `forgejo-<instanz>` ein. Fragt zum Schluss, welche bestehenden Repositories Claude nutzen darf. |
 | `/igit repo` | Legt ein Repository an. Fragt nach Eigentümer (falls Organisationen existieren), Name und Sichtbarkeit, trägt das Bot-Konto mit Schreibrecht ein, legt einen Meilenstein an und verbindet das Arbeitsverzeichnis per SSH. Am Ende folgt die Aufforderung, in Forgejo ein Projektboard anzulegen, weil Forgejo dafür keine API bietet. |
+| `/igit archivieren` bzw. `/igit archive` | Macht ein Repository schreibgeschützt; lässt sich wieder aufheben. |
+| `/igit löschen` bzw. `/igit delete` | Löscht ein Repository nach ausdrücklicher Bestätigung endgültig, auf Wunsch samt verbundenem lokalem Verzeichnis. Das Verzeichnis wird nur gelöscht, wenn es auf dieses Repository zeigt und keine ungesicherten Änderungen oder ungepushten Commits enthält. |
 | `/igit widerrufen` bzw. `/igit revoke` | Entzieht einem einzelnen Claude-Client den Zugriff, indem Token und SSH-Schlüssel gelöscht werden. Andere Clients bleiben unberührt. |
 
 Nach `einrichten` muss Claude Code einmal neu gestartet werden, damit der MCP-Server verfügbar ist. Alle Unterbefehle lassen sich gefahrlos wiederholen; sie legen nur an, was fehlt.
@@ -69,4 +71,4 @@ Das Skript lässt sich auch direkt aufrufen, etwa zur Fehlersuche. `python3 skil
 python3 -m unittest tests/test_igit.py
 ```
 
-Die Unit-Tests brauchen weder Docker noch Forgejo. Den vollständigen Ablauf (installieren, einrichten, freigeben, repo, widerrufen) hat eine Wegwerf-Instanz in einem abgeschotteten Home-Verzeichnis geprüft. Dieser Test ist nicht automatisiert.
+Die Unit-Tests brauchen weder Docker noch Forgejo. Den vollständigen Ablauf (installieren, einrichten, freigeben, repo, archivieren, löschen, widerrufen) hat eine Wegwerf-Instanz in einem abgeschotteten Home-Verzeichnis geprüft. Dieser Test ist nicht automatisiert.

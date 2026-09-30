@@ -25,6 +25,8 @@ Der Skill hat drei Unterbefehle:
 |---|---|
 | `einrichten` | Instanz finden oder installieren, Bot-Konto, Client-Schlüssel, Host-Key-Pinning, Token und forgejo-mcp einrichten, Abgleich bestehender Repos |
 | `repo` | Ein Repository anlegen, das Bot-Konto eintragen, Meilenstein anlegen, Arbeitsverzeichnis verbinden |
+| `archivieren` | Ein Repository schreibgeschützt setzen oder das wieder aufheben |
+| `loeschen` | Ein Repository endgültig löschen, optional samt lokalem Verzeichnis |
 | `widerrufen` | Einen Claude-Client widerrufen, ohne andere zu beeinträchtigen |
 
 ## 3. Dateien auf dem Claude-Client
@@ -124,6 +126,14 @@ Quelle: [Welche Schritte führt der Skill beim Anlegen eines Repos aus?](http://
 6. **Arbeitsverzeichnis verbinden:** Falls nötig führt das Skript `git init` aus. Es setzt `origin` auf `igit-<instanz>:<eigentümer>/<name>.git`.
 7. **Zuordnung neuer Issues:** Claude ordnet jedes Issue, das es in diesem Repository anlegt, dem Meilenstein zu. **[Vorschlag]** Damit spätere Sitzungen das wissen, ergänzt das Skript die `CLAUDE.md` des Arbeitsverzeichnisses um einen Hinweis mit Repository und Meilenstein.
 8. **Anweisung am Ende:** Claude weist den Betreiber an, in der Forgejo-Oberfläche ein Projektboard anzulegen und die Issues des Meilensteins zu übernehmen. Forgejo 16 hat keine API für Projekte. **[Unsicher]** Ob das Board alle Issues eines Meilensteins auf einmal übernehmen kann, ist nicht geprüft.
+
+## 5a. Unterbefehle `archivieren` und `loeschen`
+
+Diese Unterbefehle kamen nach Abschluss der Map auf Wunsch des Betreibers hinzu. Beide nutzen einen vorübergehenden Admin-Token (wie in 4.4), weil das Bot-Konto nur Schreibrecht hat.
+
+- `archivieren` setzt ein Repository schreibgeschützt; `--rueckgaengig` hebt das auf.
+- `loeschen` löscht ein Repository samt Issues und Meilenstein endgültig. Das Skript verlangt `--bestaetigen` mit genau dem Repo-Namen; Claude holt die Bestätigung vorher ausdrücklich ein.
+- Mit `--dir` löscht das Skript zusätzlich das lokale Verzeichnis, aber nur, wenn es ein Git-Repository ist, dessen `origin` auf dieses Repository zeigt, und wenn es weder nicht committete Änderungen noch ungepushte Commits enthält. Der vom Skript geschriebene `CLAUDE.md`-Hinweis zählt nicht als Änderung. Die Prüfung läuft vor dem Löschen auf dem Server. Andernfalls bleibt das Verzeichnis stehen, und das Skript nennt die Gründe.
 
 ## 6. Unterbefehl `widerrufen`
 

@@ -1,6 +1,6 @@
 ---
 name: igit
-description: Forgejo + Claude einrichten / set up Forgejo for Claude. Use when the user wants to connect Claude to a Forgejo instance (einrichten, setup, install Forgejo), create a Forgejo repository for the current directory (Repo anlegen, create repo), or revoke a Claude client's access (widerrufen, revoke).
+description: Forgejo + Claude einrichten / set up Forgejo for Claude. Use when the user wants to connect Claude to a Forgejo instance (einrichten, setup, install Forgejo), create a Forgejo repository for the current directory (Repo anlegen, create repo), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
 ---
 
 # igit
@@ -43,6 +43,16 @@ Fertig ist der Unterbefehl, wenn `einrichten` mit `"ok": true` zurückkam, jede 
 
 Ab jetzt ordnest du jedes Issue, das du in diesem Repo anlegst, dem Meilenstein aus `result.milestone_id` zu. Das Skript hat dazu einen Hinweis in die `CLAUDE.md` des Arbeitsverzeichnisses geschrieben.
 
+## Unterbefehl: archivieren / archive
+
+`archivieren --repo <eigentümer/name>` macht das Repo schreibgeschützt; `--rueckgaengig` hebt das wieder auf. Archivieren ist umkehrbar und braucht keine Bestätigung. Ist unklar, ob der Betreiber archivieren oder löschen will, frage nach und empfiehl Archivieren.
+
+## Unterbefehl: löschen / delete
+
+1. Sage dem Betreiber, dass Repo, Issues und Meilenstein endgültig verloren gehen, und hol dir eine ausdrückliche Bestätigung für genau dieses Repo.
+2. Frage, ob das verbundene lokale Verzeichnis mitgelöscht werden soll.
+3. `loeschen --repo <eigentümer/name> --bestaetigen <eigentümer/name> [--dir <verzeichnis>]`. Das Skript löscht das Verzeichnis nur, wenn `origin` auf dieses Repo zeigt und nichts Ungesichertes darin liegt; sonst meldet es per Warnung, warum es das Verzeichnis stehen lässt. Gib die Warnung weiter und lösche das Verzeichnis nicht selbst.
+
 ## Unterbefehl: widerrufen / revoke
 
 1. `widerrufen` ohne `--client` aufrufen; die Antwort `client_required` listet die bekannten Clients in `details.clients` und den eigenen in `details.this_client`.
@@ -56,6 +66,8 @@ Ab jetzt ordnest du jedes Issue, das du in diesem Repo anlegst, dem Meilenstein 
 | `operator_ambiguous` | Frage, welches Admin-Konto aus `details.admins` der Betreiber ist; wiederhole mit `--operator`. |
 | `instance_ambiguous` | Frage, welche Instanz aus `details.instances`; wiederhole mit `--instanz`. |
 | `no_instance` | Führe zuerst `einrichten` aus. |
+| `repo_not_found` | Prüfe den Namen mit dem Betreiber (`eigentümer/name`). |
+| `confirm_mismatch` | Hol dir die Bestätigung erneut und übergib bei `--bestaetigen` genau den Repo-Namen. |
 | `owner_required` | Frage nach dem Eigentümer (Betreiber oder eine Organisation aus `details.orgs`). |
 | `port_busy` | Schlage die Ports aus `details.free` vor und frage. |
 | `no_admin_access` | Frage, in welchem Container Forgejo läuft (`--container`) oder mit welchem Befehl die Forgejo-CLI aufgerufen wird (`--admin-exec`). |

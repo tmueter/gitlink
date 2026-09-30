@@ -116,6 +116,22 @@ MSG = {
         "de": "Welcher Client? Bekannte Clients: {clients}.",
         "en": "Which client? Known clients: {clients}.",
     },
+    "repo_not_found": {
+        "de": "Das Repository {repo} existiert nicht.",
+        "en": "The repository {repo} does not exist.",
+    },
+    "confirm_mismatch": {
+        "de": "Löschen nicht bestätigt: `--bestaetigen` muss genau {repo} lauten.",
+        "en": "Deletion not confirmed: `--confirm` must be exactly {repo}.",
+    },
+    "w_local_kept": {
+        "de": "Das Verzeichnis {dir} wurde nicht gelöscht: {reasons}.",
+        "en": "The directory {dir} was not deleted: {reasons}.",
+    },
+    "r_not_git": {"de": "kein Git-Repository", "en": "not a Git repository"},
+    "r_other_origin": {"de": "`origin` zeigt nicht auf dieses Repository", "en": "`origin` does not point to this repository"},
+    "r_dirty": {"de": "enthält nicht committete Änderungen", "en": "contains uncommitted changes"},
+    "r_unpushed": {"de": "enthält nicht gepushte Commits", "en": "contains unpushed commits"},
     "client_unknown": {
         "de": "Der Client {client} ist auf der Instanz nicht bekannt.",
         "en": "The client {client} is not known on the instance.",
@@ -982,6 +998,60 @@ def cmd_repo(args):
             "board_instruction": t("board_hint", url=board, milestone=milestone["title"])}, warnings
 
 
+def cmd_archive(args):
+    inst, cfg = pick_instance(args.instanz)
+    with Session(cfg) as s:
+        status, _ = s.api.call("GET", f"/repos/{args.repo}", soft=(404,))
+        if status == 404:
+            raise Fail("repo_not_found", repo=args.repo)
+        _, repo = s.api.call("PATCH", f"/repos/{args.repo}", {"archived": not args.undo})
+    return {"instance": inst, "repo": args.repo, "archived": repo.get("archived")}, s.warnings
+
+
+def local_dir_blockers(workdir, remote):
+    """Gründe, die gegen das Löschen eines lokalen Verzeichnisses sprechen; leer heißt: gefahrlos."""
+    git = ["git", "-C", str(workdir)]
+    if run(git + ["rev-parse", "--git-dir"], check=False).returncode != 0:
+        return [t("r_not_git")]
+    reasons = []
+    if run(git + ["remote", "get-url", "origin"], check=False).stdout.strip() != remote:
+        reasons.append(t("r_other_origin"))
+    dirty = [line[3:] for line in run(git + ["status", "--porcelain"]).stdout.splitlines()]
+    md = workdir / "CLAUDE.md"
+    if dirty == ["CLAUDE.md"] and not replace_block(md.read_text(), "<!-- igit:begin -->", "<!-- igit:end -->", "").strip():
+        dirty = []  # nur der Hinweis, den `repo` selbst geschrieben hat
+    if dirty:
+        reasons.append(t("r_dirty"))
+    if run(git + ["log", "--branches", "--not", "--remotes", "--oneline"]).stdout.strip():
+        reasons.append(t("r_unpushed"))
+    return reasons
+
+
+def cmd_delete(args):
+    inst, cfg = pick_instance(args.instanz)
+    if args.confirm != args.repo:
+        raise Fail("confirm_mismatch", repo=args.repo)
+    workdir = Path(args.dir).expanduser().resolve() if args.dir else None
+    remote = f"{cfg['ssh_alias']}:{args.repo}.git"
+    # Vor dem Löschen prüfen: danach gibt es keinen Server mehr, gegen den unpushte Commits zählen.
+    blockers = local_dir_blockers(workdir, remote) if workdir and workdir.exists() else []
+    with Session(cfg) as s:
+        status, _ = s.api.call("GET", f"/repos/{args.repo}", soft=(404,))
+        if status == 404:
+            raise Fail("repo_not_found", repo=args.repo)
+        s.api.call("DELETE", f"/repos/{args.repo}")
+    warnings = list(s.warnings)
+    local_deleted = False
+    if workdir and workdir.exists():
+        if blockers:
+            warnings.append(t("w_local_kept", dir=str(workdir), reasons=", ".join(blockers)))
+        else:
+            shutil.rmtree(workdir)
+            local_deleted = True
+    return {"instance": inst, "repo": args.repo, "deleted": True,
+            "local_dir": str(workdir) if workdir else None, "local_deleted": local_deleted}, warnings
+
+
 def cmd_revoke(args):
     inst, cfg = pick_instance(args.instanz)
     with Session(cfg) as s:
@@ -1069,6 +1139,20 @@ def build_parser():
     w.add_argument("--lokal", "--local", dest="local", action="store_true")
     w.add_argument("--instanz", "--instance", dest="instanz")
     w.set_defaults(fn=cmd_revoke)
+
+    a = sub.add_parser("archivieren", aliases=["archive"], help="Repository archivieren / archive repository")
+    a.add_argument("--repo", required=True, help="eigentümer/name")
+    a.add_argument("--rueckgaengig", "--undo", dest="undo", action="store_true")
+    a.add_argument("--instanz", "--instance", dest="instanz")
+    a.set_defaults(fn=cmd_archive)
+
+    x = sub.add_parser("loeschen", aliases=["delete"], help="Repository endgültig löschen / delete repository")
+    x.add_argument("--repo", required=True, help="eigentümer/name")
+    x.add_argument("--bestaetigen", "--confirm", dest="confirm", required=True,
+                   help="noch einmal eigentümer/name / eigentümer/name again")
+    x.add_argument("--dir", help="lokales Verzeichnis mitlöschen / also delete local directory")
+    x.add_argument("--instanz", "--instance", dest="instanz")
+    x.set_defaults(fn=cmd_delete)
     return p
 
 
