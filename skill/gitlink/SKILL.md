@@ -21,6 +21,12 @@ Jeder Aufruf gibt genau ein JSON-Objekt aus. Bei `"ok": true` stehen die Ergebni
 
 Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. Das Skript legt sie in `0600`-Dateien ab und nennt nur Pfade.
 
+## Ohne Unterbefehl oder bei unklarem Ziel
+
+Rufe `uebersicht` auf und biete **nur die Befehle an, die `result.instances[].commands` für die jeweilige Instanz nennt**, jeweils mit ihrer `description`; dazu `result.other` für eine weitere Instanz. Nenne pro Instanz Plattform und Adresse. Befehle, die für keine eingerichtete Instanz möglich sind, erwähnst du nicht.
+
+Nennt der Betreiber einen Befehl, der nur auf einem Teil der Instanzen geht, nimm die Instanz, auf der er möglich ist, und übergib sie mit `--instanz`; geht er auf mehreren, frage nach.
+
 ## Unterbefehl: einrichten / setup
 
 1. **Instanz finden:** `finden --dir <arbeitsverzeichnis>`.

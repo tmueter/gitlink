@@ -221,6 +221,54 @@ MSG = {
         "de": "Dieses Verzeichnis ist mit dem {platform}-Repository `{repo}` auf `{inst}` verbunden (SSH-Alias `{alias}`, MCP-Server `{server}`).",
         "en": "This directory is connected to the {platform} repository `{repo}` on `{inst}` (SSH alias `{alias}`, MCP server `{server}`).",
     },
+    "c_einrichten": {
+        "de": "Prüft die Einrichtung dieser Instanz und bringt sie auf den aktuellen Stand (Schlüssel, Host-Key, Token, MCP-Server); ändert nichts, was schon stimmt.",
+        "en": "Checks this instance's set-up and brings it up to date (key, host key, token, MCP server); leaves everything that is already correct.",
+    },
+    "c_einrichten_gitlab": {
+        "de": "Prüft den SSH-Zugang deines Kontos (Schlüssel, Host-Key, Alias); ändert nichts, was schon stimmt.",
+        "en": "Checks your account's SSH access (key, host key, alias); leaves everything that is already correct.",
+    },
+    "c_verbinden": {
+        "de": "Verbindet ein lokales Verzeichnis mit einem bestehenden Repo (setzt `origin`, schreibt den Hinweis in die CLAUDE.md).",
+        "en": "Connects a local directory to an existing repository (sets `origin`, writes the note into CLAUDE.md).",
+    },
+    "c_verbinden_gitlab": {
+        "de": "Verbindet ein lokales Verzeichnis mit einem Repo, das du selbst in GitLab angelegt hast. Danach hilft Claude nur; Commit und Push nur auf deine Anforderung.",
+        "en": "Connects a local directory to a repository you created yourself in GitLab. Afterwards Claude only assists; commit and push only when you ask.",
+    },
+    "c_repo": {
+        "de": "Legt ein neues Repo an, trägt den Bot mit Schreibrecht ein, legt einen Meilenstein an und verbindet ein lokales Verzeichnis.",
+        "en": "Creates a new repository, adds the bot with write access, creates a milestone and connects a local directory.",
+    },
+    "c_freigeben": {
+        "de": "Gibt dem Bot Schreibzugriff auf bestehende Repos, z. B. solche, die du in der Weboberfläche angelegt hast.",
+        "en": "Gives the bot write access to existing repositories, e.g. ones you created in the web interface.",
+    },
+    "c_abhaengigkeit": {
+        "de": "Legt fest, welches Issue ein anderes blockiert, oder listet bzw. entfernt solche Abhängigkeiten.",
+        "en": "Sets which issue blocks another, or lists or removes such dependencies.",
+    },
+    "c_archivieren": {
+        "de": "Macht ein Repo schreibgeschützt; lässt sich rückgängig machen.",
+        "en": "Makes a repository read-only; can be undone.",
+    },
+    "c_loeschen": {
+        "de": "Löscht ein Repo endgültig, nach ausdrücklicher Bestätigung; auf Wunsch auch das lokale Verzeichnis, falls nichts Ungesichertes darin liegt.",
+        "en": "Deletes a repository permanently after explicit confirmation; optionally the local directory too if nothing unsaved is in it.",
+    },
+    "c_widerrufen": {
+        "de": "Entzieht einem Claude-Client den Zugriff (Token und SSH-Schlüssel); andere Clients bleiben unberührt.",
+        "en": "Revokes a Claude client's access (token and SSH key); other clients are unaffected.",
+    },
+    "c_widerrufen_gitlab": {
+        "de": "Entfernt den SSH-Zugang dieses Rechners lokal; den Schlüssel löschst du danach selbst in GitLab.",
+        "en": "Removes this machine's SSH access locally; you then delete the key in GitLab yourself.",
+    },
+    "c_neu": {
+        "de": "Eine weitere Instanz einrichten (Forgejo, Gitea oder GitLab) oder Forgejo neu installieren.",
+        "en": "Set up another instance (Forgejo, Gitea or GitLab) or install Forgejo from scratch.",
+    },
     "board_hint": {
         "de": "Lege ein Projektboard an ({url}) und übernimm die Issues des Meilensteins „{milestone}“.",
         "en": "Create a project board ({url}) and add the issues of the milestone \"{milestone}\".",
@@ -1565,6 +1613,31 @@ def cmd_connect(args):
     return {"instance": inst, "platform": plat, "repo": args.repo, "ssh_remote": remote, "claude_md": str(md)}, notes
 
 
+COMMANDS = {
+    "forgejo": ["einrichten", "verbinden", "repo", "freigeben", "abhaengigkeit", "archivieren", "loeschen", "widerrufen"],
+    "gitea": ["einrichten", "verbinden", "repo", "freigeben", "abhaengigkeit", "archivieren", "loeschen", "widerrufen"],
+    "gitlab": ["einrichten", "verbinden", "widerrufen"],
+}
+EN_NAMES = {"einrichten": "setup", "verbinden": "connect", "freigeben": "grant", "abhaengigkeit": "dependency",
+            "archivieren": "archive", "loeschen": "delete", "widerrufen": "revoke", "repo": "repo"}
+
+
+def cmd_overview(args):
+    """Eingerichtete Instanzen und je Plattform nur die Befehle, die dort möglich sind."""
+    notes = migrate_legacy()
+    instances = []
+    for inst, cfg in all_configs().items():
+        plat = cfg.get("platform", "forgejo")
+        cmds = []
+        for c in COMMANDS[plat]:
+            key = f"c_{c}_{plat}" if f"c_{c}_{plat}" in MSG else f"c_{c}"
+            cmds.append({"command": c if LANG == "de" else EN_NAMES[c], "description": t(key)})
+        instances.append({"instance": inst, "platform": plat, "url": cfg.get("url"),
+                          "account": cfg.get("account") or cfg.get("operator"), "commands": cmds})
+    return {"instances": instances, "other": {"command": "einrichten" if LANG == "de" else "setup",
+                                              "description": t("c_neu")}}, notes
+
+
 # --------------------------------------------------------------------------- CLI
 
 def build_parser():
@@ -1574,6 +1647,9 @@ def build_parser():
 
     def inst_arg(sp):
         sp.add_argument("--instanz", "--instance", dest="instanz")
+
+    u = sub.add_parser("uebersicht", aliases=["overview"], help="eingerichtete Instanzen und mögliche Befehle / set-up instances and possible commands")
+    u.set_defaults(fn=cmd_overview)
 
     d = sub.add_parser("finden", aliases=["discover"], help="laufende Instanzen suchen / find running instances")
     d.add_argument("--dir", default=".")

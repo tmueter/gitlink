@@ -69,6 +69,8 @@ Am Ende von `einrichten` und `repo` empfiehlt der Skill die [Skills von Matt Poc
 
 Wird der MCP-Server neu registriert oder geändert, muss Claude Code einmal neu gestartet werden; der Skill sagt dann Bescheid. Alle Unterbefehle lassen sich gefahrlos wiederholen; sie legen nur an, was fehlt.
 
+Ohne Unterbefehl (`/gitlink`) zeigt der Skill die eingerichteten Instanzen und bietet je Instanz nur die Befehle an, die auf ihrer Plattform möglich sind, jeweils mit einer kurzen Erklärung.
+
 Das Skript lässt sich auch direkt aufrufen, etwa zur Fehlersuche. `python3 skill/gitlink/gitlink.py --help` listet die Unterbefehle; jeder gibt ein JSON-Objekt aus.
 
 ## Sicherheit

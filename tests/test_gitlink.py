@@ -399,6 +399,24 @@ class GitLabAccount(SandboxHome):
         gl = [i for i in out["result"]["instances"] if i.get("instance") == "gitlab-example-org-443"]
         self.assertEqual((gl[0]["platform"], gl[0]["http_detected"]), ("gitlab", False))
 
+    def test_overview_offers_only_possible_commands(self):
+        self.user = "tmueter"
+        self.setup()
+        gitlink.save_config("fj", {"url": "http://localhost:3000", "platform": "forgejo", "operator": "dreamer"})
+        subcommands = set(gitlink.build_parser()._subparsers._group_actions[0].choices)
+        for lang in ("de", "en"):
+            out = json.loads(io.StringIO().getvalue() or "{}") or None
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                gitlink.main(["--lang", lang, "uebersicht"])
+            res = json.loads(buf.getvalue())["result"]
+            by = {i["instance"]: [c["command"] for c in i["commands"]] for i in res["instances"]}
+            self.assertEqual(len(by["gitlab-example-org-443"]), 3)
+            self.assertEqual(len(by["fj"]), 8)
+            for cmds in by.values():
+                self.assertTrue(set(cmds) <= subcommands, cmds)
+            self.assertTrue(all(c["description"] for i in res["instances"] for c in i["commands"]))
+
     def test_connect_without_access_fails_clearly(self):
         self.user = "tmueter"
         self.setup()
