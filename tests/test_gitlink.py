@@ -392,6 +392,13 @@ class GitLabAccount(SandboxHome):
         self.assertIn("nur auf ausdrückliche Anforderung", md)
         self.assertIn("@tmueter", md)
 
+    def test_discover_lists_configured_gitlab_even_without_http(self):
+        self.user = "tmueter"
+        self.setup()
+        out = self.cli("finden", "--dir", str(self.home))
+        gl = [i for i in out["result"]["instances"] if i.get("instance") == "gitlab-example-org-443"]
+        self.assertEqual((gl[0]["platform"], gl[0]["http_detected"]), ("gitlab", False))
+
     def test_connect_without_access_fails_clearly(self):
         self.user = "tmueter"
         self.setup()

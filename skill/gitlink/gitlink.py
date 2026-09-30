@@ -1155,6 +1155,10 @@ def cmd_discover(args):
         if plat:
             c.update({"platform": plat, "version": version})
             found.append(c)
+        elif c.get("instance") and load_config(c["instance"]):
+            # Eingerichtet, aber per HTTP nicht erkennbar (z. B. interne Zertifizierungsstelle, nur SSH genutzt)
+            c.update({"platform": load_config(c["instance"]).get("platform"), "version": None, "http_detected": False})
+            found.append(c)
     return {"instances": found}
 
 
