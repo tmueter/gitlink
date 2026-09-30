@@ -405,7 +405,6 @@ class GitLabAccount(SandboxHome):
         gitlink.save_config("fj", {"url": "http://localhost:3000", "platform": "forgejo", "operator": "dreamer"})
         subcommands = set(gitlink.build_parser()._subparsers._group_actions[0].choices)
         for lang in ("de", "en"):
-            out = json.loads(io.StringIO().getvalue() or "{}") or None
             buf = io.StringIO()
             with redirect_stdout(buf):
                 gitlink.main(["--lang", lang, "uebersicht"])
