@@ -63,6 +63,7 @@ Quellen: [Wie installiert der Skill Forgejo, wenn keine Instanz läuft?](http://
 
 - Installationsweg ist Docker Compose mit dem rootful Image `codeberg.org/forgejo/forgejo:16`. Docker muss vorhanden sein. Fehlt Docker, bricht der Skill mit einer klaren Meldung ab.
 - Das Verzeichnis ist `~/forgejo`. Die Ports sind 3000 für Web und 2222 für SSH. Nur wenn ein Port belegt ist, fragt Claude nach einem anderen.
+- Das Skript startet Compose mit dem eigenen Projektnamen `igit-<instanz>` und bricht ab, wenn dieses Projekt schon existiert. Ohne eigenen Namen leitet Compose ihn aus dem Verzeichnisnamen ab und würde fremde Container desselben Projekts neu erzeugen.
 - Die Compose-Datei setzt `FORGEJO__security__INSTALL_LOCK=true` und einen vom Skript erzeugten, zufälligen `FORGEJO__security__SECRET_KEY`. Ein leerer `SECRET_KEY` ist ausgeschlossen, weil Forgejo sonst stillschweigend einen öffentlich bekannten Standardschlüssel verwendet.
 - Den SSH-Port für Clone-URLs setzt das Skript über `FORGEJO__server__SSH_PORT`, nicht über die Template-Variable `SSH_PORT`, weil diese auch den `sshd` im Container verschiebt.
 - Das Betreiber-Konto entsteht mit `docker exec -u git <container> forgejo admin user create --admin`. **[Vorschlag]** Claude fragt Benutzername und E-Mail. Das Skript erzeugt ein zufälliges Passwort, legt es in `~/.config/igit/<instanz>/betreiber-passwort` (0600) ab und nennt dem Betreiber nur den Pfad.
@@ -95,8 +96,8 @@ Quelle: [Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerru
 
 ### 4.7 Token des Clients
 
-- Jeder Claude-Client erhält genau einen Token des Bot-Kontos, erzeugt mit `POST /admin/users/<bot>/tokens`. Name `igit-<client>`, Scopes `write:repository` und `write:issue`. Der Token ist nicht auf einzelne Repositories beschränkt, weil forgejo-mcp nur einen Token pro Instanz nimmt. Die Beschränkung ergibt sich aus dem `restricted`-Bot-Konto.
-- **[Unsicher]** Ob forgejo-mcp zusätzlich `read:user` braucht, etwa für die Abfrage des eigenen Kontos, ist nicht geprüft. Das ist beim ersten Test zu klären.
+- Jeder Claude-Client erhält genau einen Token des Bot-Kontos, erzeugt mit `POST /admin/users/<bot>/tokens`. Name `igit-<client>`, Scopes `write:repository`, `write:issue` und `read:user`. Der Token ist nicht auf einzelne Repositories beschränkt, weil forgejo-mcp nur einen Token pro Instanz nimmt. Die Beschränkung ergibt sich aus dem `restricted`-Bot-Konto.
+- `read:user` ist enthalten, damit forgejo-mcp das eigene Konto abfragen kann. Mit diesen Scopes meldet `claude mcp get` den Server im Test als verbunden; ob es ohne `read:user` ginge, ist nicht geprüft.
 - Der Token wird nach `~/.config/igit/<instanz>/token` geschrieben. Tokens laufen nicht ab und werden nicht rotiert. Sie gelten bis zum Widerruf.
 
 ### 4.8 forgejo-mcp einrichten
@@ -105,7 +106,7 @@ Quelle: [Wie spricht Claude jenseits von Git mit der Instanz?](http://localhost:
 
 - Pro Instanz gibt es einen MCP-Server-Eintrag, registriert mit `claude mcp add --scope user forgejo-<instanz> -- ~/.config/igit/<instanz>/start-mcp`.
 - Der Starter liest den Token aus der Datei, übergibt ihn als `FORGEJO_ACCESS_TOKEN` und startet forgejo-mcp mit `--url`. Bei einem Client auf einem anderen Rechner öffnet er vorher den SSH-Tunnel (siehe Abschnitt 7).
-- **[Vorschlag]** Das Skript installiert forgejo-mcp als Binary aus den Releases des Projekts nach `~/.local/bin`, falls es fehlt, und prüft die Signatur, soweit das Projekt eine anbietet.
+- Das Skript installiert forgejo-mcp als Binary aus den Releases des Projekts nach `~/.local/bin`, falls es fehlt, und prüft die SHA-256-Prüfsumme gegen die Prüfsummendatei des Releases. Eine cosign-Signaturprüfung findet nicht statt; das Skript weist darauf hin.
 
 ### 4.9 Abgleich bestehender Repositories
 

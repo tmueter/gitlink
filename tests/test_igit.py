@@ -1,0 +1,130 @@
+"""Unit-Tests für die Teile von igit.py, die ohne Docker und ohne Forgejo laufen."""
+import io
+import json
+import os
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skill" / "igit"))
+import igit  # noqa: E402
+
+
+class SandboxHome(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old_home = os.environ.get("HOME")
+        os.environ["HOME"] = self._tmp.name
+        self.home = Path(self._tmp.name)
+
+    def tearDown(self):
+        os.environ["HOME"] = self._old_home
+        self._tmp.cleanup()
+
+
+class ReplaceBlock(unittest.TestCase):
+    B, E = "# a begin", "# a end"
+
+    def test_inserts_at_end(self):
+        self.assertEqual(igit.replace_block("x\n", self.B, self.E, "# a begin\ny\n# a end\n"),
+                         "x\n\n# a begin\ny\n# a end\n")
+
+    def test_replaces_existing(self):
+        text = "x\n# a begin\nalt\n# a end\nz\n"
+        self.assertEqual(igit.replace_block(text, self.B, self.E, "# a begin\nneu\n# a end\n"),
+                         "x\n# a begin\nneu\n# a end\nz\n")
+
+    def test_removes_with_empty_block(self):
+        self.assertEqual(igit.replace_block("x\n# a begin\nalt\n# a end\nz\n", self.B, self.E, ""), "x\nz\n")
+
+
+class SshFiles(SandboxHome):
+    def test_block_is_prepended_before_wildcard_and_idempotent(self):
+        cfg = self.home / ".ssh" / "config"
+        cfg.parent.mkdir()
+        cfg.write_text("Host *\n    StrictHostKeyChecking no\n")
+        for _ in range(2):
+            igit.update_ssh_config("localhost-3000", "localhost", 2222, "/k/igit_localhost-3000")
+        text = cfg.read_text()
+        self.assertTrue(text.startswith("# igit:localhost-3000 begin\nHost igit-localhost-3000\n"))
+        self.assertEqual(text.count("Host igit-localhost-3000"), 1)
+        self.assertIn("HostKeyAlias igit-localhost-3000", text)
+        self.assertTrue(text.rstrip().endswith("StrictHostKeyChecking no"))
+        self.assertEqual(cfg.stat().st_mode & 0o777, 0o600)
+        igit.update_ssh_config("localhost-3000", "", 0, "", remove=True)
+        self.assertEqual(cfg.read_text(), "Host *\n    StrictHostKeyChecking no\n")
+
+    def test_known_hosts_replaces_only_own_alias(self):
+        kh = self.home / ".ssh" / "known_hosts"
+        kh.parent.mkdir()
+        kh.write_text("other ssh-ed25519 AAA\nigit-x ssh-rsa OLD\n")
+        igit.update_known_hosts("x", ["ssh-ed25519 NEW"])
+        self.assertEqual(kh.read_text(), "other ssh-ed25519 AAA\nigit-x ssh-ed25519 NEW\n")
+        igit.update_known_hosts("x", [], remove=True)
+        self.assertEqual(kh.read_text(), "other ssh-ed25519 AAA\n")
+
+
+class Config(SandboxHome):
+    def test_pick_instance(self):
+        with self.assertRaises(igit.Fail) as e:
+            igit.pick_instance(None)
+        self.assertEqual(e.exception.code, "no_instance")
+        igit.save_config("a", {"url": "http://localhost:1"})
+        self.assertEqual(igit.pick_instance(None)[0], "a")
+        igit.save_config("b", {"url": "http://localhost:2"})
+        with self.assertRaises(igit.Fail) as e:
+            igit.pick_instance(None)
+        self.assertEqual(e.exception.details["instances"], ["a", "b"])
+        self.assertEqual((igit.inst_dir("a") / "config.json").stat().st_mode & 0o777, 0o600)
+
+
+class Validation(unittest.TestCase):
+    def test_names(self):
+        self.assertEqual(igit.valid_name("localhost-3000"), "localhost-3000")
+        for bad in ("", "Gross", "a b", "lauf-1", "-x"):
+            with self.assertRaises(igit.Fail):
+                igit.valid_name(bad)
+
+    def test_transport(self):
+        igit.check_transport("http://localhost:3000")
+        igit.check_transport("http://127.0.0.1:3000")
+        igit.check_transport("https://forge.example.org")
+        with self.assertRaises(igit.Fail) as e:
+            igit.check_transport("http://192.0.2.10:3000")
+        self.assertEqual(e.exception.code, "insecure_url")
+
+    def test_parse_ini_detects_empty_secret(self):
+        ini = igit.parse_ini("[server]\nSSH_PORT = 2222\n[security]\nINSTALL_LOCK = true\nSECRET_KEY =\n")
+        self.assertEqual(ini[("server", "SSH_PORT")], "2222")
+        self.assertEqual(ini[("security", "SECRET_KEY")], "")
+
+
+class Cli(SandboxHome):
+    def run_cli(self, *argv):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = igit.main(list(argv))
+        return code, json.loads(buf.getvalue())
+
+    def test_german_and_english_names_and_messages(self):
+        code, out = self.run_cli("--lang", "de", "widerrufen")
+        self.assertEqual((code, out["error"]), (1, "no_instance"))
+        self.assertIn("Keine eingerichtete Instanz", out["message"])
+        code, out = self.run_cli("--lang", "en", "revoke")
+        self.assertEqual(out["error"], "no_instance")
+        self.assertIn("No set-up instance", out["message"])
+
+    def test_every_message_has_both_languages(self):
+        for key, texts in igit.MSG.items():
+            self.assertEqual(set(texts), {"de", "en"}, key)
+
+    def test_visibility_flags(self):
+        p = igit.build_parser()
+        self.assertTrue(p.parse_args(["repo", "--name", "x", "--privat"]).private)
+        self.assertFalse(p.parse_args(["repo", "--name", "x", "--public"]).private)
+
+
+if __name__ == "__main__":
+    unittest.main()
