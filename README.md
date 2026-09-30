@@ -1,6 +1,6 @@
 # igit
 
-`igit` ist ein Claude-Code-Skill, der die Ersteinrichtung zwischen einer selbst betriebenen Forgejo-Instanz und Claude automatisiert. Nach einem Lauf kann Claude über ein eigenes Bot-Konto Repositories anlegen, per SSH pushen und Issues verwalten, ohne dass Schlüssel, Tokens oder Remotes von Hand übertragen werden.
+`igit` ist ein Claude-Code-Skill, der die Ersteinrichtung zwischen einer selbst betriebenen GIT-Instanz (Gitea/Forgeo) und Claude automatisiert. Nach einem Lauf kann Claude über ein eigenes Bot-Konto Repositories anlegen, per SSH pushen und Issues verwalten, ohne dass Schlüssel, Tokens oder Remotes von Hand übertragen werden.
 
 Der Skill versteht Deutsch und Englisch: Er antwortet in der Sprache, in der man ihn anspricht, und alle Unterbefehle haben einen deutschen und einen englischen Namen.
 
