@@ -52,7 +52,7 @@ Verbindet das Arbeitsverzeichnis mit einem Repo, das der Betreiber selbst angele
 
 ## Unterbefehl: repo
 
-1. `orgs` aufrufen. Hat der Betreiber Organisationen (bei GitLab: Gruppen, in denen er Owner ist), frage, ob das Repo unter seinem Konto oder dort liegen soll.
+1. `orgs` aufrufen. Nur Forgejo und Gitea (bei GitLab: `verbinden`). Hat der Betreiber Organisationen, frage, ob das Repo unter seinem Konto oder dort liegen soll.
 2. Frage **immer** nach Name und Sichtbarkeit (privat oder öffentlich).
 3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <arbeitsverzeichnis>`. Bei `repo_exists` frage, ob das bestehende Repo eingerichtet werden soll; wenn ja, mit `--existing-ok` wiederholen.
 4. Gib `result.board_instruction` an den Betreiber weiter: Das Projektboard legt er auf allen Plattformen selbst an.
@@ -68,7 +68,7 @@ Issue-Abhängigkeiten setzt du immer über das Skript, nicht über den MCP-Serve
 - Entfernen: zusätzlich `--entfernen`
 - Auflisten: ohne `--blockiert-durch`; `result.blocked_by` nennt die blockierenden Issues.
 
-Bei GitLab gehen blockierende Links laut Doku nur in Premium/Ultimate; `deps_unsupported` gibst du dann weiter.
+Nur Forgejo und Gitea.
 
 ## Matt-Pocock-Skills empfehlen
 
@@ -86,7 +86,7 @@ Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in
 
 ## Unterbefehl: löschen / delete
 
-1. Sage dem Betreiber, dass Repo, Issues und Meilenstein endgültig verloren gehen (bei GitLab kann eine Warnung melden, dass es nur zum Löschen markiert wurde), und hol dir eine ausdrückliche Bestätigung für genau dieses Repo.
+1. Sage dem Betreiber, dass Repo, Issues und Meilenstein endgültig verloren gehen (nur Forgejo und Gitea), und hol dir eine ausdrückliche Bestätigung für genau dieses Repo.
 2. Frage, ob das verbundene lokale Verzeichnis mitgelöscht werden soll.
 3. `loeschen --repo <eigentümer/name> --bestaetigen <eigentümer/name> [--dir <verzeichnis>]`. Das Skript löscht das Verzeichnis nur, wenn `origin` auf dieses Repo zeigt und nichts Ungesichertes darin liegt; sonst meldet es per Warnung, warum es das Verzeichnis stehen lässt. Gib die Warnung weiter und lösche das Verzeichnis nicht selbst.
 
