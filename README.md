@@ -19,6 +19,7 @@ GitHub und gitlab.com werden nicht unterstützt.
 | Pfad | Inhalt |
 |---|---|
 | [`skill/gitlink/SKILL.md`](skill/gitlink/SKILL.md) | Anweisungen für Claude: Rückfragen und Abläufe |
+| [`skill/gitlink/sonderfaelle.md`](skill/gitlink/sonderfaelle.md) | Nachschlagewerk für seltene Lagen und Fehlercodes |
 | [`skill/gitlink/gitlink.py`](skill/gitlink/gitlink.py) | Skript für alle deterministischen Schritte (Python 3, nur Standardbibliothek) |
 | [`tests/test_gitlink.py`](tests/test_gitlink.py) | Unit-Tests, laufen ohne Docker und ohne echte Instanz |
 | [`docs/spec-gitlink-skill.md`](docs/spec-gitlink-skill.md) | Spezifikation: Ablauf, Dateien, Sicherheitsregeln, Plattformen, Umfang |

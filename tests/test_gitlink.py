@@ -284,6 +284,42 @@ class Detection(unittest.TestCase):
             gitlink.Api(url, ("private", "t"), "/api/v4").call("GET", "/user")
         self.assertEqual(e.exception.code, "auth_proxy")
 
+    def test_connect_on_forgejo_grants_bot_first(self):
+        calls = []
+
+        class FakeAdapter:
+            warnings = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                pass
+
+            def get_repo(self, full):
+                calls.append(("get", full))
+                return {"full_name": full}
+
+            def grant(self, full):
+                calls.append(("grant", full))
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        old_home = os.environ["HOME"]
+        os.environ["HOME"] = tmp.name
+        self.addCleanup(os.environ.__setitem__, "HOME", old_home)
+        for name, fn in {"adapter": lambda cfg, op=None: FakeAdapter(),
+                         "remote_access": lambda remote: (("grant", "d/r") in calls, "denied")}.items():
+            self.addCleanup(setattr, gitlink, name, getattr(gitlink, name))
+            setattr(gitlink, name, fn)
+        gitlink.save_config("fj", {"url": "http://localhost:3000", "platform": "forgejo", "ssh_alias": "gitlink-fj"})
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            gitlink.main(["--lang", "de", "verbinden", "--repo", "d/r", "--dir", str(Path(tmp.name) / "w")])
+        out = json.loads(buf.getvalue())
+        self.assertTrue(out["result"]["bot_granted"])
+        self.assertEqual(calls, [("get", "d/r"), ("grant", "d/r")])
+
     def test_forgejo_gitea_gitlab_and_unknown(self):
         forgejo = self.serve({"/api/forgejo/v1/version": (200, {"version": "16.0.5+gitea-1.22.0"}),
                               "/api/v1/version": (200, {"version": "16.0.5+gitea-1.22.0"})})
@@ -415,6 +451,11 @@ class GitLabAccount(SandboxHome):
             for cmds in by.values():
                 self.assertTrue(set(cmds) <= subcommands, cmds)
             self.assertTrue(all(c["description"] for i in res["instances"] for c in i["commands"]))
+
+    def test_gitlab_accepts_plain_http_url_because_no_token_is_sent(self):
+        out = self.cli("einrichten", "--url", "http://gitlab.intern.example", "--plattform", "gitlab",
+                       "--ssh-hostname", "10.0.0.5", "--client", "box")
+        self.assertEqual(out["error"], "ssh_key_required")  # nicht insecure_url
 
     def test_connect_without_access_fails_clearly(self):
         self.user = "tmueter"

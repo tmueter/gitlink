@@ -1,124 +1,76 @@
 ---
 name: gitlink
-description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo, Gitea or self-hosted GitLab instance (einrichten, setup, install Forgejo), create a repository or connect the current directory to an existing one (Repo anlegen, verbinden, create repo, connect), set issue dependencies (Abhängigkeit, blocked by), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
+description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo, Gitea or self-hosted GitLab instance (einrichten, setup, install Forgejo), create a repository or connect a directory to an existing one (Repo anlegen, verbinden, create repo, connect), set issue dependencies (Abhängigkeit, blocked by), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
 ---
 
 # gitlink
 
-Der Skill richtet die Zusammenarbeit zwischen einer Instanz von Forgejo, Gitea oder selbst gehostetem GitLab und Claude ein. Die Plattform erkennt das Skript selbst (`result.platform`). Alles Deterministische erledigt das mitgelieferte Skript `gitlink.py` im Basisverzeichnis dieses Skills. Deine Aufgabe ist es, die Rückfragen zu stellen und das Skript mit den Antworten aufzurufen.
-
-## Sprache
-
-Antworte in der Sprache des Betreibers. Übergib dem Skript immer `--lang de` oder `--lang en` passend dazu. Alle Unterbefehle haben einen deutschen und einen englischen Namen (`einrichten`/`setup`, `widerrufen`/`revoke` …); nimm den zur Sprache passenden.
-
-## Skript aufrufen
+Der Skill verbindet Claude mit einer Instanz von Forgejo, Gitea oder selbst gehostetem GitLab. Alles Deterministische erledigt das Skript `gitlink.py` im Basisverzeichnis dieses Skills; du stellst die Rückfragen und rufst es auf:
 
 ```
 python3 <basisverzeichnis>/gitlink.py --lang <de|en> <unterbefehl> [optionen]
 ```
 
-Jeder Aufruf gibt genau ein JSON-Objekt aus. Bei `"ok": true` stehen die Ergebnisse unter `result` und Hinweise unter `warnings`; gib jede Warnung dem Betreiber sinngemäß weiter. Bei `"ok": false` nennen `error` und `details`, was fehlt; die Tabelle unter [Fehlercodes](#fehlercodes) sagt, was du dann tust.
+Jeder Aufruf gibt ein JSON-Objekt aus: bei `"ok": true` das Ergebnis in `result` und Hinweise in `warnings`, bei `"ok": false` einen `error` mit `details`. Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie; das Skript nennt nur Pfade. Öffentliche Schlüssel und Fingerprints darfst du zeigen.
 
-Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. Das Skript legt sie in `0600`-Dateien ab und nennt nur Pfade.
+## Gesprächsregeln
 
-## Ohne Unterbefehl oder bei unklarem Ziel
+- **Sprache:** Antworte in der Sprache des Betreibers und übergib `--lang de` bzw. `--lang en`. Unterbefehle heißen auf Deutsch und Englisch (`einrichten`/`setup` …).
+- **Eine Frage pro Schritt:** Bündle alles, was du für einen Schritt wissen musst, in eine einzige Rückfrage, und schlage für jeden Punkt einen Standardwert vor, den der Betreiber nur bestätigen muss.
+- **Nur fragen, was das Skript nicht weiß:** Frag nie nach etwas, das `uebersicht` oder `finden` beantwortet.
+- **Knappe Ergebnisse:** Nach jedem Befehl höchstens fünf Zeilen: was passiert ist, jede Warnung sinngemäß, und was der Betreiber jetzt tun muss, falls etwas.
+- **Instanz wählen:** Ist ein Befehl nur auf einer eingerichteten Instanz möglich (laut `uebersicht`), nimm sie und übergib `--instanz`. Frag nur, wenn mehrere passen.
+- **Verzeichnis wählen:** Standard ist das aktuelle Verzeichnis, wenn es noch kein `origin` hat; sonst `<übergeordnetes Verzeichnis>/<repo-name>`.
 
-Rufe `uebersicht` auf und biete **nur die Befehle an, die `result.instances[].commands` für die jeweilige Instanz nennt**, jeweils mit ihrer `description`; dazu `result.other` für eine weitere Instanz. Nenne pro Instanz Plattform und Adresse. Befehle, die für keine eingerichtete Instanz möglich sind, erwähnst du nicht.
+## Ohne Unterbefehl
 
-Nennt der Betreiber einen Befehl, der nur auf einem Teil der Instanzen geht, nimm die Instanz, auf der er möglich ist, und übergib sie mit `--instanz`; geht er auf mehreren, frage nach.
+Rufe `uebersicht` auf. Zeige je Instanz Plattform und Adresse und darunter **nur** die Befehle aus `result.instances[].commands` mit ihrer `description`, dazu `result.other`. Frag dann, was der Betreiber tun will.
 
-## Unterbefehl: einrichten / setup
+## einrichten / setup
 
-1. **Instanz finden:** `finden --dir <arbeitsverzeichnis>`.
-   - Genau eine Instanz: weiter mit Schritt 3. `result.instances[].platform` nennt die Plattform.
-   - Mehrere: frage, welche gemeint ist.
-   - Keine: frage, ob und wo eine Instanz läuft (Adresse; bei einem anderen Rechner zusätzlich den SSH-Host, über den der Betreiber dorthin kommt) oder ob du eine installieren sollst. Installiert wird immer Forgejo; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen.
-2. **Installieren (nur auf Wunsch):** frage Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>`. Standard sind `~/forgejo` und die Ports 3000/2222; nur bei `port_busy` fragst du nach anderen Ports (`--web-port`, `--ssh-port`). Nenne dem Betreiber danach den Pfad der Passwortdatei aus `result.password_file`.
-3. **Einrichten:** `einrichten --url <url>`. Läuft die Instanz auf einem anderen Rechner, zusätzlich `--ssh-host <host>`; die URL ist dann die Adresse, unter der die Instanz auf diesem Rechner erreichbar ist (meist `http://localhost:3000`).
-   - **GitLab:** Immer mit `--plattform gitlab`. Der Skill arbeitet dort ohne Token und ohne Bot, nur mit dem Konto des Betreibers per SSH. Ist der Web-Host nicht per SSH erreichbar (etwa hinter einem Anmelde-Proxy), gib die interne SSH-Adresse mit `--ssh-hostname` an.
-     - Endet der Lauf mit `ssh_key_required`, halte an: Zeig dem Betreiber `details.public_key`, den Link `details.add_key_url` und den Titel `details.title`, damit er den Schlüssel in seinem GitLab-Konto einträgt. Nenne ihm auch `details.host_key_fingerprints` zum Vergleich mit der Seite `/help/instance_configuration` der Instanz. Warte auf seine Bestätigung und wiederhole dann `einrichten`.
-     - Kommt `ssh_key_required` erneut, obwohl der Schlüssel eingetragen ist, läuft der Git-Zugang von GitLab meist auf einem anderen Port oder Host (z. B. GitLab im Container). Lass dir die URL unter **Code → Clone with SSH** eines Projekts nennen und wiederhole mit `--ssh-port` bzw. `--ssh-hostname`; der Skill pinnt die Host-Keys dann neu, und der Betreiber vergleicht die neuen Fingerprints.
-     - Für GitLab entfallen Abgleich, MCP-Server und Matt-Pocock-Empfehlung.
-   - **Anmelde-Proxy:** Endet der Lauf mit `auth_proxy`, steht vor der Instanz ein Proxy mit eigener Anmeldung (z. B. Microsoft Entra). Kein Token hilft dagegen. Erkläre das und frage nach einem Zugang ohne Proxy: VPN mit interner Adresse oder ein Rechner im Netz der Instanz (`--ssh-host`). Ist die Plattform bekannt, aber die Erkennung scheitert, übergib `--plattform gitlab`.
-   - **Interne Zertifizierungsstelle:** Scheitert HTTPS an einem unbekannten Zertifikat (die Instanz wird dann nicht gefunden), frage nach dem Zertifikat der internen Stelle als PEM-Datei und übergib es mit `--ca-cert <datei>`. Der Skill vertraut ihm nur für diese Instanz; das System bleibt unverändert.
-4. **Abgleich:** Enthält `result.missing_repos` Einträge, zeige die Liste und frage, welche Repos Claude nutzen darf. Für die gewählten: `freigeben <eigentümer/repo> …`.
-5. **Abschluss:** fasse zusammen (Plattform, Instanz, Bot-Konto, SSH-Alias, MCP-Server). Den Neustart von Claude Code erwähnst du nur, wenn eine Warnung ihn verlangt.
-6. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
+1. `finden --dir <verzeichnis>`. Eine Instanz: weiter. Mehrere: frag, welche. Keine: frag in einer Frage nach der Adresse oder ob Forgejo installiert werden soll ([Sonderfälle](sonderfaelle.md#installation)).
+2. `einrichten --url <url>`; bei GitLab zusätzlich `--plattform gitlab`.
+3. Je nach Ergebnis:
+   - `missing_repos` nicht leer (Forgejo/Gitea): frag einmal, welche Repos Claude nutzen darf (Vorschlag: alle), dann `freigeben <repo> …`.
+   - `ssh_key_required` (GitLab): zeig `details.public_key`, `details.title`, den Link `details.add_key_url` und `details.host_key_fingerprints` zum Vergleich mit `<url>/help/instance_configuration`; bitte den Betreiber, den Schlüssel einzutragen und die Fingerprints zu bestätigen. Danach `einrichten` wiederholen. Kommt der Fehler trotz eingetragenem Schlüssel erneut: [Sonderfälle](sonderfaelle.md#gitlab-ssh-port).
+   - jeder andere Fehler: [Sonderfälle](sonderfaelle.md#fehlercodes).
+4. Kurz zusammenfassen (Plattform, Konto bzw. Bot, SSH-Alias, MCP-Server), dann [Empfehlung](#empfehlung), außer bei GitLab.
 
-Fertig ist der Unterbefehl, wenn `einrichten` mit `"ok": true` zurückkam, jede Warnung weitergegeben, über jedes Repo aus `missing_repos` entschieden und die Empfehlung beantwortet ist.
+## verbinden / connect
 
-## Unterbefehl: verbinden / connect
+Verbindet ein Verzeichnis mit einem bestehenden Repo. Bei Forgejo/Gitea trägt das Skript den Bot dabei selbst ein.
 
-Verbindet das Arbeitsverzeichnis mit einem Repo, das der Betreiber selbst angelegt hat. Das ist bei GitLab der einzige Weg zu einem Repo.
+1. Frag in einer Frage nach dem Repo (`eigentümer/name`, bei GitLab auch `gruppe/…/name`) und schlag das Verzeichnis vor.
+2. `verbinden --repo <pfad> --dir <verzeichnis>`.
 
-1. Frage nach dem Pfad des Repos (`gruppe/…/name`) und dem Verzeichnis.
-2. `verbinden --repo <pfad> --dir <verzeichnis>`. Bei `repo_no_access` gib die Meldung weiter: Das Repo fehlt, oder das Konto hat keinen Zugriff.
+**Bei GitLab gilt danach:** Du leistest nur Hilfestellung. `git commit` und `git push` nur auf ausdrückliche Anforderung, keine Änderungen auf GitLab selbst. Die Regel steht auch in der `CLAUDE.md` des Verzeichnisses.
 
-**Bei GitLab gilt danach:** Du leistest nur Hilfestellung. `git commit` und `git push` führst du nur aus, wenn der Betreiber es ausdrücklich verlangt. Auf GitLab selbst änderst du nichts (keine Issues, Merge Requests oder Einstellungen). Das Skript hat diese Regel auch in die `CLAUDE.md` des Verzeichnisses geschrieben.
+## repo (Forgejo, Gitea)
 
-## Unterbefehl: repo
+1. `orgs` aufrufen.
+2. **Eine** Frage: Name (falls nicht genannt), Sichtbarkeit (Vorschlag: privat), Eigentümer nur wenn `orgs` nicht leer, Verzeichnis als Vorschlag.
+3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <verzeichnis>`. Bei `repo_exists` frag, ob das bestehende Repo eingerichtet werden soll (`--existing-ok`).
+4. Gib `result.board_instruction` weiter, dann [Empfehlung](#empfehlung).
 
-1. `orgs` aufrufen. Nur Forgejo und Gitea (bei GitLab: `verbinden`). Hat der Betreiber Organisationen, frage, ob das Repo unter seinem Konto oder dort liegen soll.
-2. Frage **immer** nach Name und Sichtbarkeit (privat oder öffentlich).
-3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <arbeitsverzeichnis>`. Bei `repo_exists` frage, ob das bestehende Repo eingerichtet werden soll; wenn ja, mit `--existing-ok` wiederholen.
-4. Gib `result.board_instruction` an den Betreiber weiter: Das Projektboard legt er auf allen Plattformen selbst an.
-5. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
+Jedes Issue, das du danach in diesem Repo anlegst, ordnest du dem Meilenstein `result.milestone_id` zu (steht auch in der `CLAUDE.md`).
 
-Ab jetzt ordnest du jedes Issue, das du in diesem Repo anlegst, dem Meilenstein aus `result.milestone_id` zu. Das Skript hat dazu einen Hinweis in die `CLAUDE.md` des Arbeitsverzeichnisses geschrieben.
+## abhaengigkeit / dependency (Forgejo, Gitea)
 
-## Unterbefehl: abhaengigkeit / dependency
+Abhängigkeiten setzt du immer über das Skript, nicht über den MCP-Server:
+`abhaengigkeit --repo <repo> --issue <blockiert> [--blockiert-durch <blockierend> [--entfernen]]`; ohne `--blockiert-durch` listet es `result.blocked_by`.
 
-Issue-Abhängigkeiten setzt du immer über das Skript, nicht über den MCP-Server; gitea-mcp kann sie nicht, und so verhält es sich überall gleich. Das Skript handelt als Bot.
+## archivieren / archive (Forgejo, Gitea)
 
-- Anlegen: `abhaengigkeit --repo <eigentümer/name> --issue <blockiert> --blockiert-durch <blockierend>`
-- Entfernen: zusätzlich `--entfernen`
-- Auflisten: ohne `--blockiert-durch`; `result.blocked_by` nennt die blockierenden Issues.
+`archivieren --repo <repo>` (rückgängig mit `--rueckgaengig`); umkehrbar, ohne Rückfrage. Ist unklar, ob archivieren oder löschen gemeint ist, empfiehl Archivieren.
 
-Nur Forgejo und Gitea.
+## löschen / delete (Forgejo, Gitea)
 
-## Matt-Pocock-Skills empfehlen
+Eine Frage: „Repo `<repo>` samt Issues endgültig löschen? Lokales Verzeichnis `<verzeichnis>` mitlöschen?“ Nur bei ausdrücklichem Ja: `loeschen --repo <repo> --bestaetigen <repo> [--dir <verzeichnis>]`. Das Skript lässt ein Verzeichnis mit Ungesichertem stehen und sagt warum; lösch es nie selbst.
 
-Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in dieser Sitzung schon beantwortet, entfällt er.
+## widerrufen / revoke
 
-1. Prüfe mit `claude plugin list`, ob `mattpocock-skills` installiert ist.
-2. **Nicht installiert:** Empfiehl die Skills von Matt Pocock (https://github.com/mattpocock/skills) für die Planung und Umsetzung im neuen Repo, besonders `/wayfinder`, das eine grobe Idee in Entscheidungs-Tickets zerlegt. Frage, ob du sie installieren sollst. Bei Ja: `claude plugins install mattpocock-skills`, danach sage, dass die Skills nach einem Neustart von Claude Code verfügbar sind und `/mattpocock-skills:setup-matt-pocock-skills` sie einmalig für das Repo einrichtet.
-3. Sind die Skills installiert, schon vorher oder gerade eben, frage, ob der Betreiber mit `/wayfinder` ein Vorhaben planen will, und wenn ja, welche Idee.
-   - Skills waren schon installiert: rufe den Skill `mattpocock-skills:wayfinder` mit der Idee auf.
-   - Skills wurden gerade erst installiert: nenne den Aufruf für nach dem Neustart, `/mattpocock-skills:wayfinder <idee>`.
+`widerrufen` ohne `--client` listet in `details.clients` die Clients und in `details.this_client` den eigenen. Frag, welcher; für den eigenen zusätzlich `--lokal`. Bei GitLab gibt es nur den eigenen; das Skript nennt den Link, unter dem der Betreiber den Schlüssel in GitLab entfernt.
 
-## Unterbefehl: archivieren / archive
+## Empfehlung
 
-`archivieren --repo <eigentümer/name>` macht das Repo schreibgeschützt; `--rueckgaengig` hebt das wieder auf. Archivieren ist umkehrbar und braucht keine Bestätigung. Ist unklar, ob der Betreiber archivieren oder löschen will, frage nach und empfiehl Archivieren.
-
-## Unterbefehl: löschen / delete
-
-1. Sage dem Betreiber, dass Repo, Issues und Meilenstein endgültig verloren gehen (nur Forgejo und Gitea), und hol dir eine ausdrückliche Bestätigung für genau dieses Repo.
-2. Frage, ob das verbundene lokale Verzeichnis mitgelöscht werden soll.
-3. `loeschen --repo <eigentümer/name> --bestaetigen <eigentümer/name> [--dir <verzeichnis>]`. Das Skript löscht das Verzeichnis nur, wenn `origin` auf dieses Repo zeigt und nichts Ungesichertes darin liegt; sonst meldet es per Warnung, warum es das Verzeichnis stehen lässt. Gib die Warnung weiter und lösche das Verzeichnis nicht selbst.
-
-## Unterbefehl: widerrufen / revoke
-
-1. `widerrufen` ohne `--client` aufrufen; die Antwort `client_required` listet die bekannten Clients in `details.clients` und den eigenen in `details.this_client`.
-2. Frage, welcher Client widerrufen werden soll.
-3. `widerrufen --client <name>`; ist es der eigene Client, zusätzlich `--lokal`, damit auch Schlüssel, Token-Datei, SSH-Eintrag und MCP-Server auf diesem Rechner entfernt werden.
-
-## Fehlercodes
-
-| `error` | Was du tust |
-|---|---|
-| `operator_ambiguous` | Frage, welches Admin-Konto aus `details.admins` der Betreiber ist; wiederhole mit `--operator`. |
-| `instance_ambiguous` | Frage, welche Instanz aus `details.instances`; wiederhole mit `--instanz`. |
-| `no_instance` | Führe zuerst `einrichten` aus. |
-| `repo_not_found` | Prüfe den Namen mit dem Betreiber (`eigentümer/name`). |
-| `confirm_mismatch` | Hol dir die Bestätigung erneut und übergib bei `--bestaetigen` genau den Repo-Namen. |
-| `owner_required` | Frage nach dem Eigentümer (Betreiber oder eine Organisation aus `details.orgs`). |
-| `port_busy` | Schlage die Ports aus `details.free` vor und frage. |
-| `no_admin_access` | Frage, in welchem Container Forgejo bzw. Gitea läuft (`--container`) oder mit welchem Befehl die CLI der Plattform aufgerufen wird (`--admin-exec`). |
-| `auth_proxy` | Siehe „Anmelde-Proxy“ unter `einrichten`. |
-| `ssh_key_required` | Siehe „GitLab“ unter `einrichten`. |
-| `ssh_unreachable` | SSH ist nicht erreichbar. Frage, ob der Zugang (z. B. VPN) steht und wie die interne Adresse lautet (`--ssh-hostname`). |
-| `gitlab_unsupported` | Bei GitLab gibt es nur `einrichten`, `verbinden` und `widerrufen`; erkläre das. |
-| `repo_no_access` | Das Repo fehlt oder das Konto hat keinen Zugriff; der Betreiber legt es an bzw. klärt die Rechte. |
-| `unsupported_platform` | Unter der Adresse läuft weder Forgejo noch Gitea noch GitLab; frage nach der richtigen Adresse. |
-| `insecure_url` | Die Instanz ist nur per unverschlüsseltem HTTP über das Netz erreichbar. Frage nach dem SSH-Host für einen Tunnel (`--ssh-host`) oder einer HTTPS-Adresse. |
-| alle anderen | Gib `message` weiter und frage, wie der Betreiber fortfahren will. |
+Einmal pro Sitzung, nach `einrichten` oder `repo` (nicht bei GitLab): Ist `mattpocock-skills` laut `claude plugin list` nicht installiert, empfiehl die [Skills von Matt Pocock](https://github.com/mattpocock/skills), besonders `/wayfinder`, und biete `claude plugins install mattpocock-skills` an (verfügbar nach Neustart; einmalig `/mattpocock-skills:setup-matt-pocock-skills`). Ist es installiert, frag, ob der Betreiber mit `/wayfinder` ein Vorhaben planen will, und rufe dann `mattpocock-skills:wayfinder` mit seiner Idee auf.

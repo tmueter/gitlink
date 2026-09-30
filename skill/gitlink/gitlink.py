@@ -973,8 +973,7 @@ class GiteaFamily:
 
     # --- Arbeit als Bot (Client-Token)
     @classmethod
-    def bot_api(cls, cfg, token):
-        base = cfg["url"] if not cfg.get("ssh_host") else cfg["mcp_url"]
+    def bot_api(cls, base, token):
         return Api(base, ("token", token), cls.api_prefix)
 
     @classmethod
@@ -1197,7 +1196,9 @@ def cmd_discover(args):
         try:
             plat, version = detect_platform(c["url"])
         except Fail as e:
-            c.update({"platform": None, "error": e.code, "redirect_host": e.details.get("redirect_host")})
+            known = load_config(c["instance"]) if c.get("instance") else None
+            c.update({"platform": known.get("platform") if known else None, "http_detected": False,
+                      "error": e.code, "redirect_host": e.details.get("redirect_host")})
             found.append(c)
             continue
         if plat:
@@ -1326,7 +1327,7 @@ def cmd_setup(args):
     plat = args.platform or old.get("platform")
     if plat:
         detected = plat  # vorgegeben oder gespeichert; hinter einem Anmelde-Proxy geht Erkennung nicht
-        if not remote:
+        if not remote and plat != "gitlab":  # GitLab: es geht nie ein Token über HTTP
             check_transport(url)
     elif not remote:
         check_transport(url)
@@ -1371,9 +1372,7 @@ def cmd_setup(args):
             cfg["mcp_url"] = f"http://127.0.0.1:{cfg['mcp_port']}"
         else:
             cfg["mcp_url"] = url
-        expires = ensure_client_token(a, inst, cfg, client)
-        if expires:
-            warnings.append(t("w_token_expires", date=expires))
+        ensure_client_token(a, inst, cfg, client)
         missing = a.missing_repos()
     warnings += a.warnings
     server = None
@@ -1568,11 +1567,10 @@ def cmd_dependency(args):
     token = (inst_dir(inst) / "token").read_text().strip()
     use_ca(cfg.get("ca_cert"))
     cls = PLATFORMS[cfg.get("platform", "forgejo")]
-    tunnel = Tunnel(cfg["ssh_host"], cfg["web_port"], cfg.get("mcp_port")) if cfg.get("ssh_host") else None
+    tunnel = Tunnel(cfg["ssh_host"], cfg["web_port"]) if cfg.get("ssh_host") else None  # eigener freier Port
     try:
-        if tunnel:
-            tunnel.__enter__()
-        blocked_by = cls.dependency(cls.bot_api(cfg, token), args.repo, args.issue, args.blocker, args.remove)
+        base = tunnel.__enter__() if tunnel else cfg["url"]
+        blocked_by = cls.dependency(cls.bot_api(base, token), args.repo, args.issue, args.blocker, args.remove)
     finally:
         if tunnel:
             tunnel.__exit__()
@@ -1590,6 +1588,14 @@ def cmd_connect(args):
     inst, cfg = pick_instance(args.instanz)
     workdir = Path(args.dir).resolve()
     remote = f"{cfg['ssh_alias']}:{args.repo}.git"
+    granted = False
+    if cfg.get("platform", "forgejo") in PLATFORMS:  # Bot eintragen, sonst hätte er keinen Zugriff
+        with adapter(cfg) as a:
+            if a.get_repo(args.repo) is None:
+                raise Fail("repo_not_found", repo=args.repo)
+            a.grant(args.repo)
+            granted = True
+        notes += a.warnings
     ok, err = remote_access(remote)
     if not ok:
         raise Fail("repo_no_access", {"remote": remote}, remote=remote, err=err)
@@ -1610,7 +1616,8 @@ def cmd_connect(args):
     md = write_md_note(workdir, note)
     cfg["dirs"] = sorted(set(cfg.get("dirs", [])) | {str(workdir)})
     save_config(inst, cfg)
-    return {"instance": inst, "platform": plat, "repo": args.repo, "ssh_remote": remote, "claude_md": str(md)}, notes
+    return {"instance": inst, "platform": plat, "repo": args.repo, "ssh_remote": remote, "bot_granted": granted,
+            "claude_md": str(md)}, notes
 
 
 COMMANDS = {
