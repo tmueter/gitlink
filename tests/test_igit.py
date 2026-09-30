@@ -80,6 +80,43 @@ class Config(SandboxHome):
         self.assertEqual((igit.inst_dir("a") / "config.json").stat().st_mode & 0o777, 0o600)
 
 
+class McpRegistration(SandboxHome):
+    GET_OUTPUT = ("forgejo-x:\n  Scope: User config (available in all your projects)\n  Status: ✔ Connected\n"
+                  "  Type: stdio\n  Command: {cmd}\n  Args: {args}\n  Environment:\n")
+
+    def fake_claude(self, get_code, get_stdout):
+        calls = []
+
+        def fake_run(cmd, check=True, **kw):
+            calls.append(cmd[2])
+            if cmd[2] == "get":
+                return igit.subprocess.CompletedProcess(cmd, get_code, get_stdout, "")
+            return igit.subprocess.CompletedProcess(cmd, 0, "", "")
+
+        original = igit.run
+        igit.run = fake_run
+        self.addCleanup(setattr, igit, "run", original)
+        return calls
+
+    def test_unchanged_registration_is_left_alone(self):
+        calls = self.fake_claude(0, self.GET_OUTPUT.format(cmd="/s/start-mcp", args=""))
+        self.assertEqual(igit.register_mcp("x", "/s/start-mcp"), ("forgejo-x", False))
+        self.assertEqual(calls, ["get"])
+
+    def test_missing_or_different_registration_is_replaced(self):
+        for code, out in ((1, ""), (0, self.GET_OUTPUT.format(cmd="/alt/start-mcp", args="")),
+                          (0, self.GET_OUTPUT.format(cmd="/s/start-mcp", args="--x"))):
+            calls = self.fake_claude(code, out)
+            self.assertEqual(igit.register_mcp("x", "/s/start-mcp"), ("forgejo-x", True))
+            self.assertEqual(calls, ["get", "remove", "add"])
+
+    def test_starter_reports_change_only_when_content_differs(self):
+        cfg = {"mcp_url": "http://localhost:3000"}
+        self.assertTrue(igit.write_starter("x", cfg, "/bin/forgejo-mcp")[1])
+        self.assertFalse(igit.write_starter("x", cfg, "/bin/forgejo-mcp")[1])
+        self.assertTrue(igit.write_starter("x", cfg, "/opt/forgejo-mcp")[1])
+
+
 class Validation(unittest.TestCase):
     def test_names(self):
         self.assertEqual(igit.valid_name("localhost-3000"), "localhost-3000")

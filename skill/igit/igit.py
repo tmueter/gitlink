@@ -631,16 +631,32 @@ def write_starter(inst, cfg, binary):
     if cfg.get("ssh_host"):
         tunnel = TUNNEL.format(host=shlex.quote(cfg["ssh_host"]), lport=cfg["mcp_port"], rport=cfg["web_port"])
     path = inst_dir(inst) / "start-mcp"
-    write_private(path, STARTER.format(inst=inst, tunnel=tunnel, binary=shlex.quote(binary),
-                                       url=shlex.quote(cfg["mcp_url"])), mode=0o700)
-    return path
+    content = STARTER.format(inst=inst, tunnel=tunnel, binary=shlex.quote(binary), url=shlex.quote(cfg["mcp_url"]))
+    changed = not path.exists() or path.read_text() != content
+    if changed:
+        write_private(path, content, mode=0o700)
+    return path, changed
+
+
+def mcp_registered(server, starter):
+    """True, wenn `server` im Benutzer-Scope genau mit `starter` ohne Argumente registriert ist."""
+    out = run(["claude", "mcp", "get", server], check=False)
+    if out.returncode != 0:
+        return False
+    fields = dict(line.strip().split(":", 1) for line in out.stdout.splitlines() if ":" in line)
+    return (fields.get("Scope", "").strip().startswith("User config")
+            and fields.get("Command", "").strip() == str(starter)
+            and not fields.get("Args", "").strip())
 
 
 def register_mcp(inst, starter):
+    """Registriert den MCP-Server nur, wenn er fehlt oder abweicht; liefert (name, geändert)."""
     server = f"forgejo-{inst}"
+    if mcp_registered(server, starter):
+        return server, False
     run(["claude", "mcp", "remove", server, "-s", "user"], check=False)
     run(["claude", "mcp", "add", "-s", "user", server, "--", str(starter)])
-    return server
+    return server, True
 
 
 # --------------------------------------------------------------------------- Unterbefehle
@@ -889,10 +905,11 @@ def cmd_setup(args):
         binary, note = mcp_binary()
         if note:
             warnings.append(note)
-        starter = write_starter(inst, cfg, binary)
-        server = register_mcp(inst, starter)
+        starter, starter_changed = write_starter(inst, cfg, binary)
+        server, registration_changed = register_mcp(inst, starter)
         cfg["mcp_server"] = server
-        warnings.append(t("w_restart", server=server))
+        if starter_changed or registration_changed or note:
+            warnings.append(t("w_restart", server=server))
     save_config(inst, cfg)
     return {"instance": inst, "url": url, "operator": cfg["operator"], "bot": BOT, "client": client,
             "ssh_alias": cfg["ssh_alias"], "host_keys_pinned": len(keys), "mcp_server": server,
