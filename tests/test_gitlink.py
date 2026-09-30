@@ -516,7 +516,7 @@ class Migration(SandboxHome):
             self.assertEqual(gitlink.migrate_legacy(), [])  # idempotent
         finally:
             os.chdir(cwd)
-        self.assertEqual(len(notes), 2)
+        self.assertEqual(len(notes), 3)
         new = gitlink.load_config("localhost-3000")
         self.assertEqual((new["platform"], new["ssh_alias"], new["token_name"]), ("forgejo", "gitlink-localhost-3000", "igit-box"))
         self.assertEqual((old / "forgejo-token").read_text(), "fremde Datei\n")  # fremde Dateien bleiben
