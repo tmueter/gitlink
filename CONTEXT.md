@@ -1,16 +1,16 @@
-# igit
+# gitlink
 
-Zero-Touch-Integration zwischen einer selbst betriebenen Forgejo-Instanz und Claude-Clients: Claude kann mit der Forge arbeiten, ohne dass ein Mensch Schlüssel, Tokens oder Remotes von Hand überträgt.
+Zero-Touch-Integration zwischen einer selbst betriebenen Instanz (Forgejo, Gitea, GitLab) und Claude-Clients: Claude kann mit der Forge arbeiten, ohne dass ein Mensch Schlüssel, Tokens oder Remotes von Hand überträgt.
 
 ## Sprache
 
 **Instanz**:
-Ein selbst betriebener Forgejo-Server, den der Betreiber für den eigenen Gebrauch betreibt.
+Ein selbst betriebener Server mit Forgejo, Gitea oder GitLab, den der Betreiber für den eigenen Gebrauch betreibt.
 _Vermeiden_: Server, Forge (wenn die konkrete Installation gemeint ist)
 
 **Betreiber**:
 Der Mensch, der die Instanz betreibt und in dessen Auftrag Claude arbeitet.
-_Vermeiden_: Admin, Owner, Nutzer (mehrdeutig mit Forgejo-Konten und Repo-Eigentümern)
+_Vermeiden_: Admin, Owner, Nutzer (mehrdeutig mit Konten der Plattform und Repo-Eigentümern)
 
 **Claude-Client**:
 Ein Rechner oder eine Umgebung, in der Claude (z. B. Claude Code) läuft und über Git und die API mit der Instanz spricht.
@@ -36,14 +36,17 @@ Der Lauf des Skills, der eine Instanz findet oder installiert und Bot-Konto, Cli
 _Vermeiden_: Installation (meint nur das Aufsetzen von Forgejo selbst), Setup
 
 **Projekt**:
-Ein Forgejo-Projektboard, das der Betreiber als Board-Ansicht über die Issues eines Repos nutzt; er legt es selbst an, weil Forgejo keine Projekt-API hat.
+Ein Projektboard der Instanz, das der Betreiber als Board-Ansicht über die Issues eines Repos nutzt; er legt es auf allen Plattformen selbst an.
 _Vermeiden_: Projekt im Sinne des Arbeitsverzeichnisses oder des Vorhabens
 
 **Meilenstein**:
 Die automatische Gruppierung der Issues eines Repos; der Skill legt ihn an, und Claude ordnet jedes neue Issue ihm zu.
 
+**Plattform**:
+Die Software einer Instanz: Forgejo, Gitea oder GitLab. Der Skill erkennt sie selbst.
+
 **Zero-Touch**:
-Erfordert vom Betreiber keine manuelle Handlung über den Skill-Aufruf, die Rückfragen des Skills und das Anlegen des Projektboards hinaus.
+Erfordert vom Betreiber keine manuelle Handlung über den Skill-Aufruf, die Rückfragen des Skills und das Anlegen des Projektboards hinaus; bei GitLab zusätzlich das einmalige Ablegen eines Admin-Tokens.
 
 ## Beziehungen
 

@@ -1,11 +1,11 @@
 ---
 name: gitlink
-description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo instance (einrichten, setup, install Forgejo), create a Forgejo repository for the current directory (Repo anlegen, create repo), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
+description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo, Gitea or self-hosted GitLab instance (einrichten, setup, install Forgejo), create a repository for the current directory (Repo anlegen, create repo), set issue dependencies (Abhängigkeit, blocked by), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
 ---
 
 # gitlink
 
-Der Skill richtet die Zusammenarbeit zwischen einer Forgejo-Instanz und Claude ein. Alles Deterministische erledigt das mitgelieferte Skript `gitlink.py` im Basisverzeichnis dieses Skills. Deine Aufgabe ist es, die Rückfragen zu stellen und das Skript mit den Antworten aufzurufen.
+Der Skill richtet die Zusammenarbeit zwischen einer Instanz von Forgejo, Gitea oder selbst gehostetem GitLab und Claude ein. Die Plattform erkennt das Skript selbst (`result.platform`). Alles Deterministische erledigt das mitgelieferte Skript `gitlink.py` im Basisverzeichnis dieses Skills. Deine Aufgabe ist es, die Rückfragen zu stellen und das Skript mit den Antworten aufzurufen.
 
 ## Sprache
 
@@ -24,26 +24,37 @@ Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. D
 ## Unterbefehl: einrichten / setup
 
 1. **Instanz finden:** `finden --dir <arbeitsverzeichnis>`.
-   - Genau eine Instanz: weiter mit Schritt 3.
+   - Genau eine Instanz: weiter mit Schritt 3. `result.instances[].platform` nennt die Plattform.
    - Mehrere: frage, welche gemeint ist.
-   - Keine: frage, ob und wo eine Instanz läuft (Adresse; bei einem anderen Rechner zusätzlich den SSH-Host, über den der Betreiber dorthin kommt) oder ob du eine installieren sollst.
+   - Keine: frage, ob und wo eine Instanz läuft (Adresse; bei einem anderen Rechner zusätzlich den SSH-Host, über den der Betreiber dorthin kommt) oder ob du eine installieren sollst. Installiert wird immer Forgejo; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen.
 2. **Installieren (nur auf Wunsch):** frage Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>`. Standard sind `~/forgejo` und die Ports 3000/2222; nur bei `port_busy` fragst du nach anderen Ports (`--web-port`, `--ssh-port`). Nenne dem Betreiber danach den Pfad der Passwortdatei aus `result.password_file`.
-3. **Einrichten:** `einrichten --url <url>`. Läuft die Instanz auf einem anderen Rechner, zusätzlich `--ssh-host <host>`; die URL ist dann die Adresse, unter der Forgejo auf diesem Rechner erreichbar ist (meist `http://localhost:3000`).
+3. **Einrichten:** `einrichten --url <url>`. Läuft die Instanz auf einem anderen Rechner, zusätzlich `--ssh-host <host>`; die URL ist dann die Adresse, unter der die Instanz auf diesem Rechner erreichbar ist (meist `http://localhost:3000`).
+   - **GitLab:** Der erste Lauf endet mit `admin_token_required`. Nenne dem Betreiber den Befehl aus `message`, mit dem er im **eigenen Terminal** einen Admin-Token (Scope `api`) in `details.path` ablegt, und wiederhole danach `einrichten`. Den Token nie im Chat erfragen.
 4. **Abgleich:** Enthält `result.missing_repos` Einträge, zeige die Liste und frage, welche Repos Claude nutzen darf. Für die gewählten: `freigeben <eigentümer/repo> …`.
-5. **Abschluss:** fasse zusammen (Instanz, Bot-Konto, SSH-Alias, MCP-Server) und sage, dass der MCP-Server erst nach einem Neustart von Claude Code verfügbar ist.
+5. **Abschluss:** fasse zusammen (Plattform, Instanz, Bot-Konto, SSH-Alias, MCP-Server). Den Neustart von Claude Code erwähnst du nur, wenn eine Warnung ihn verlangt.
 6. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
 
 Fertig ist der Unterbefehl, wenn `einrichten` mit `"ok": true` zurückkam, jede Warnung weitergegeben, über jedes Repo aus `missing_repos` entschieden und die Empfehlung beantwortet ist.
 
 ## Unterbefehl: repo
 
-1. `orgs` aufrufen. Hat der Betreiber Organisationen, frage, ob das Repo unter seinem Konto oder einer Organisation liegen soll.
+1. `orgs` aufrufen. Hat der Betreiber Organisationen (bei GitLab: Gruppen, in denen er Owner ist), frage, ob das Repo unter seinem Konto oder dort liegen soll.
 2. Frage **immer** nach Name und Sichtbarkeit (privat oder öffentlich).
 3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <arbeitsverzeichnis>`. Bei `repo_exists` frage, ob das bestehende Repo eingerichtet werden soll; wenn ja, mit `--existing-ok` wiederholen.
-4. Gib `result.board_instruction` an den Betreiber weiter: Das Projektboard legt er selbst an, weil Forgejo dafür keine API hat.
+4. Gib `result.board_instruction` an den Betreiber weiter: Das Projektboard legt er auf allen Plattformen selbst an.
 5. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
 
 Ab jetzt ordnest du jedes Issue, das du in diesem Repo anlegst, dem Meilenstein aus `result.milestone_id` zu. Das Skript hat dazu einen Hinweis in die `CLAUDE.md` des Arbeitsverzeichnisses geschrieben.
+
+## Unterbefehl: abhaengigkeit / dependency
+
+Issue-Abhängigkeiten setzt du immer über das Skript, nicht über den MCP-Server; gitea-mcp kann sie nicht, und so verhält es sich überall gleich. Das Skript handelt als Bot.
+
+- Anlegen: `abhaengigkeit --repo <eigentümer/name> --issue <blockiert> --blockiert-durch <blockierend>`
+- Entfernen: zusätzlich `--entfernen`
+- Auflisten: ohne `--blockiert-durch`; `result.blocked_by` nennt die blockierenden Issues.
+
+Bei GitLab gehen blockierende Links laut Doku nur in Premium/Ultimate; `deps_unsupported` gibst du dann weiter.
 
 ## Matt-Pocock-Skills empfehlen
 
@@ -61,7 +72,7 @@ Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in
 
 ## Unterbefehl: löschen / delete
 
-1. Sage dem Betreiber, dass Repo, Issues und Meilenstein endgültig verloren gehen, und hol dir eine ausdrückliche Bestätigung für genau dieses Repo.
+1. Sage dem Betreiber, dass Repo, Issues und Meilenstein endgültig verloren gehen (bei GitLab kann eine Warnung melden, dass es nur zum Löschen markiert wurde), und hol dir eine ausdrückliche Bestätigung für genau dieses Repo.
 2. Frage, ob das verbundene lokale Verzeichnis mitgelöscht werden soll.
 3. `loeschen --repo <eigentümer/name> --bestaetigen <eigentümer/name> [--dir <verzeichnis>]`. Das Skript löscht das Verzeichnis nur, wenn `origin` auf dieses Repo zeigt und nichts Ungesichertes darin liegt; sonst meldet es per Warnung, warum es das Verzeichnis stehen lässt. Gib die Warnung weiter und lösche das Verzeichnis nicht selbst.
 
@@ -82,6 +93,9 @@ Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in
 | `confirm_mismatch` | Hol dir die Bestätigung erneut und übergib bei `--bestaetigen` genau den Repo-Namen. |
 | `owner_required` | Frage nach dem Eigentümer (Betreiber oder eine Organisation aus `details.orgs`). |
 | `port_busy` | Schlage die Ports aus `details.free` vor und frage. |
-| `no_admin_access` | Frage, in welchem Container Forgejo läuft (`--container`) oder mit welchem Befehl die Forgejo-CLI aufgerufen wird (`--admin-exec`). |
+| `no_admin_access` | Frage, in welchem Container Forgejo bzw. Gitea läuft (`--container`) oder mit welchem Befehl die CLI der Plattform aufgerufen wird (`--admin-exec`). |
+| `admin_token_required` | GitLab: Gib den Befehl aus `message` weiter; der Betreiber legt den Admin-Token im eigenen Terminal ab. Danach `einrichten` wiederholen. |
+| `admin_token_invalid` | GitLab: Der Token ist ungültig, abgelaufen oder kein Admin-Token; der Betreiber legt einen neuen unter `details.path` ab. |
+| `unsupported_platform` | Unter der Adresse läuft weder Forgejo noch Gitea noch GitLab; frage nach der richtigen Adresse. |
 | `insecure_url` | Die Instanz ist nur per unverschlüsseltem HTTP über das Netz erreichbar. Frage nach dem SSH-Host für einen Tunnel (`--ssh-host`) oder einer HTTPS-Adresse. |
 | alle anderen | Gib `message` weiter und frage, wie der Betreiber fortfahren will. |
