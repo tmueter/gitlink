@@ -1,105 +1,105 @@
-# Which existing integrations let Claude Code drive a Forgejo Instance?
+# Welche bestehenden Integrationen lassen Claude Code eine Forgejo-Instanz steuern?
 
-Research for issue #4. Surveyed 2026-09-30 against primary sources (project READMEs, source files, generated CLI docs, wikis and release APIs). Local target: Forgejo `16.0.5+gitea-1.22.0` (from `GET /api/v1/version`). The `/issues/{n}/dependencies` endpoint works on it (returns `[]` for #4).
+Recherche für Issue #4. Stand 2026-09-30, erhoben aus Primärquellen (Projekt-READMEs, Quelldateien, generierte CLI-Doku, Wikis und Release-APIs). Lokales Ziel: Forgejo `16.0.5+gitea-1.22.0` (aus `GET /api/v1/version`). Der Endpunkt `/issues/{n}/dependencies` funktioniert dort (liefert `[]` für #4).
 
-## TL;DR
+## Kurzfassung
 
-| Integration | Kind | Token input | Multiple Instances | Create repo | Issues / comments | PRs | Issue dependencies | Latest release |
+| Integration | Art | Token-Übergabe | Mehrere Instanzen | Repo anlegen | Issues / Kommentare | PRs | Issue-Abhängigkeiten | Letztes Release |
 |---|---|---|---|---|---|---|---|---|
-| **forgejo-mcp** (goern / agentic-forges) | MCP server, Forgejo-native | `FORGEJO_ACCESS_TOKEN` env or `--token`. In HTTP mode, a per-request `Authorization` header | **No**, one `--url` per process. Run one server entry per Instance | Yes (`create_repo`, `owner` = user or org), plus `create_org` | Full | Create, update, merge, review, diff | **Yes**: `list_issue_dependencies`, `list_issue_dependents`, `add_issue_dependency`, `remove_issue_dependency` (cross-repo allowed) | v3.2.0, 2026-09-16 (per project page; release host is behind a bot wall) |
-| **gitea-mcp** (official Gitea) | MCP server, Gitea API | `GITEA_ACCESS_TOKEN` env or `-T`. In HTTP mode, `Authorization: Bearer/token` | **No**, one `GITEA_HOST` / `-H` per process | Yes (`create_repo`, optional `organization`) | Full (`issue_write`) | Create, merge, reviewers, reviews | Yes, via `issue_read` / `issue_write` methods | v1.7.0, 2026-08-27 |
-| **tea** (official Gitea CLI) | CLI | `tea login add --url … --token …` (or OAuth, SSH key, password), stored in `$XDG_CONFIG_HOME/tea` | **Yes**: named logins, `--login <name>`, or auto-detected from the git remote | Yes (`tea repos create`, `create-from-template`, `migrate`) | Create, edit, close, comment | Create, review, approve, merge, checkout | No subcommand. Use `tea api` | v0.16.0, 2026-09-10 |
-| **fj / forgejo-cli** (forgejo-contrib) | CLI, Forgejo-native | `fj auth add-key` (interactive paste) or `fj auth login` (OAuth, allow-listed Instances only) | **Yes**: per host, chosen with `-H/--host` or from the git remote | Yes (`fj repo create`, with `--push` / `--remote`) | Create, edit, labels, comment, close | Create (including AGit), merge | Not documented | v0.6.0, 2026-07-19 |
-| Raw REST (`curl`, or this repo's `fj` helper script) | HTTP | `Authorization: token …` | Trivially yes | Yes | Yes | Yes | Yes | n/a |
+| **forgejo-mcp** (goern / agentic-forges) | MCP-Server, Forgejo-nativ | Env `FORGEJO_ACCESS_TOKEN` oder `--token`. Im HTTP-Modus ein `Authorization`-Header pro Anfrage | **Nein**, eine `--url` pro Prozess. Pro Instanz einen Server-Eintrag betreiben | Ja (`create_repo`, `owner` = Nutzer oder Organisation), dazu `create_org` | Vollständig | Anlegen, ändern, mergen, reviewen, Diff | **Ja**: `list_issue_dependencies`, `list_issue_dependents`, `add_issue_dependency`, `remove_issue_dependency` (repo-übergreifend möglich) | v3.2.0, 2026-09-16 (laut Projektseite; der Release-Host steht hinter einer Bot-Sperre) |
+| **gitea-mcp** (offiziell von Gitea) | MCP-Server, Gitea-API | Env `GITEA_ACCESS_TOKEN` oder `-T`. Im HTTP-Modus `Authorization: Bearer/token` | **Nein**, ein `GITEA_HOST` / `-H` pro Prozess | Ja (`create_repo`, optional `organization`) | Vollständig (`issue_write`) | Anlegen, mergen, Reviewer, Reviews | Ja, über `issue_read` / `issue_write`-Methoden | v1.7.0, 2026-08-27 |
+| **tea** (offizielle Gitea-CLI) | CLI | `tea login add --url … --token …` (oder OAuth, SSH-Schlüssel, Passwort), gespeichert in `$XDG_CONFIG_HOME/tea` | **Ja**: benannte Logins, `--login <name>` oder aus dem Git-Remote erkannt | Ja (`tea repos create`, `create-from-template`, `migrate`) | Anlegen, ändern, schließen, kommentieren | Anlegen, reviewen, freigeben, mergen, auschecken | Kein Unterbefehl. `tea api` verwenden | v0.16.0, 2026-09-10 |
+| **fj / forgejo-cli** (forgejo-contrib) | CLI, Forgejo-nativ | `fj auth add-key` (interaktives Einfügen) oder `fj auth login` (OAuth, nur freigegebene Instanzen) | **Ja**: pro Host, gewählt mit `-H/--host` oder aus dem Git-Remote | Ja (`fj repo create`, mit `--push` / `--remote`) | Anlegen, ändern, Labels, kommentieren, schließen | Anlegen (auch AGit), mergen | Nicht dokumentiert | v0.6.0, 2026-07-19 |
+| Reines REST (`curl` oder das `fj`-Hilfsskript dieses Repos) | HTTP | `Authorization: token …` | Trivial ja | Ja | Ja | Ja | Ja | n/a |
 
-**Answer:** Two MCP servers are maintained and cover everything this project needs: creating repos, working issues and PRs, and issue dependencies. Neither can talk to more than one Instance per server process, so you register one MCP server per Instance. For multiple Instances the CLIs (`tea`, `fj`) are better, because each keeps named per-host logins. `tea` also has an authenticated `tea api` escape hatch for anything it has no subcommand for, such as dependencies.
+**Antwort:** Zwei MCP-Server werden gepflegt und decken alles ab, was dieses Projekt braucht: Repos anlegen, Issues und PRs bearbeiten und Issue-Abhängigkeiten. Keiner der beiden spricht mit mehr als einer Instanz pro Server-Prozess, man registriert also einen MCP-Server pro Instanz. Für mehrere Instanzen sind die CLIs (`tea`, `fj`) besser, weil jede benannte Logins pro Host verwaltet. `tea` hat zusätzlich mit `tea api` einen authentifizierten Ausweg für alles, wofür es keinen Unterbefehl gibt, etwa Abhängigkeiten.
 
-## 1. forgejo-mcp (Christoph Görn / "agentic-forges")
+## 1. forgejo-mcp (Christoph Görn / „agentic-forges“)
 
-- **Where:** development moved in 2026 to `https://git.b4mad.industries/agentic-forges/forgejo-mcp`. `codeberg.org/goern/forgejo-mcp` is now a read-only mirror, and the GitHub copy is labelled "MIRROR ONLY". Source: the mirror's README banner ("📦 This project has moved…").
-- **Maintenance:** active. The project page reports v3.2.0 on 2026-09-16, with 32 releases and ~1.5k commits. The Codeberg releases API stops at v2.30.2 (2026-07-13), which is when the move happened. It ships signed OCI images (cosign plus SBOM) and has a Go module path `git.b4mad.industries/agentic-forges/forgejo-mcp/v3`. The new host sits behind Anubis, so its release API couldn't be queried directly.
-- **Auth:** `--url` / `FORGEJO_URL` and `--token` / `FORGEJO_ACCESS_TOKEN` (README config table).
-  - In `http`/`sse` transports every request must carry its own `Authorization: token <t>` or `Bearer <t>` header. This is the "multi-tenant" mode. The server's own token is used only with `--allow-operator-token-fallback`.
-  - There is an optional OAuth resource-server mode (`--auth-mode resource-server`).
-  - `FORGEJO_USER_AGENT` exists for proxies that block Go's default user agent.
-- **Multiple Instances:** no. "Multi-tenant" means many *users* on one Instance, since `--url` is fixed per process. For N Instances you configure N MCP servers (for example `forgejo-home`, `forgejo-work`). The `forgejo://` resource URIs are described as "instance-portable", but that describes their form, not multi-Instance routing.
-- **Coverage (README tool table):**
-  - **Repos:** `create_repo` (source: `operation/repo/repo.go` takes `owner` "Owner/org name"), `fork_repo`, `edit_repo`, `get_repo`, `search_repos`, `list_my_repos`, topics, branch protection, webhooks.
-  - **Files:** create, update, delete, tree.
-  - **Orgs:** `create_org`, `edit_org`, `delete_org`, membership.
-  - **Issues:** `create_issue`, `update_issue`, `issue_state_change`, `add_issue_labels`/`remove_issue_labels`, `search_issues`, and repo/org label CRUD.
-  - **Comments:** full CRUD, plus attachments.
-  - **Dependencies:** `list_issue_dependencies`, `list_issue_dependents`, `add_issue_dependency`, `remove_issue_dependency`. The cross-repo form uses `depends_on_owner`/`depends_on_repo`.
-  - **PRs:** `create_pull_request`, `update_pull_request`, `get_pull_request_diff`, `list_pull_request_files`, `merge_pull_request` (merge/rebase/squash, delete-branch), `create_pull_review` (APPROVED/REQUEST_CHANGES/COMMENT with inline comments).
-  - **Other:** releases, wiki, Actions runs and logs (Forgejo v16+), packages, notifications.
-  - **CLI mode:** the binary can also call tools without MCP, with JSON on stdout.
-- **Gaps:** none found for "create repos + work issues/PRs + dependencies". The only gap is the one-Instance-per-process limit.
+- **Ort:** Die Entwicklung ist 2026 nach `https://git.b4mad.industries/agentic-forges/forgejo-mcp` umgezogen. `codeberg.org/goern/forgejo-mcp` ist jetzt ein schreibgeschützter Spiegel, die GitHub-Kopie trägt das Label „MIRROR ONLY“. Quelle: das Banner im README des Spiegels („📦 This project has moved…“).
+- **Pflege:** aktiv. Die Projektseite meldet v3.2.0 am 2026-09-16, mit 32 Releases und ~1,5k Commits. Die Codeberg-Release-API endet bei v2.30.2 (2026-07-13), dem Zeitpunkt des Umzugs. Es werden signierte OCI-Images (cosign plus SBOM) ausgeliefert, und es gibt einen Go-Modulpfad `git.b4mad.industries/agentic-forges/forgejo-mcp/v3`. Der neue Host steht hinter Anubis, seine Release-API ließ sich daher nicht direkt abfragen.
+- **Authentifizierung:** `--url` / `FORGEJO_URL` und `--token` / `FORGEJO_ACCESS_TOKEN` (Konfigurationstabelle im README).
+  - In den Transporten `http`/`sse` muss jede Anfrage ihren eigenen Header `Authorization: token <t>` oder `Bearer <t>` tragen. Das ist der „Multi-Tenant“-Modus. Der eigene Token des Servers wird nur mit `--allow-operator-token-fallback` verwendet.
+  - Es gibt einen optionalen OAuth-Resource-Server-Modus (`--auth-mode resource-server`).
+  - `FORGEJO_USER_AGENT` existiert für Proxys, die Gos Standard-User-Agent blockieren.
+- **Mehrere Instanzen:** nein. „Multi-Tenant“ meint viele *Nutzer* auf einer Instanz, da `--url` pro Prozess fest ist. Für N Instanzen konfiguriert man N MCP-Server (z. B. `forgejo-home`, `forgejo-work`). Die `forgejo://`-Ressourcen-URIs werden als „instance-portable“ beschrieben, das betrifft aber ihre Form, nicht ein Routing über mehrere Instanzen.
+- **Abdeckung (Tool-Tabelle im README):**
+  - **Repos:** `create_repo` (Quelle: `operation/repo/repo.go` nimmt `owner` „Owner/org name“), `fork_repo`, `edit_repo`, `get_repo`, `search_repos`, `list_my_repos`, Topics, Branch-Schutz, Webhooks.
+  - **Dateien:** anlegen, ändern, löschen, Baum.
+  - **Organisationen:** `create_org`, `edit_org`, `delete_org`, Mitgliedschaft.
+  - **Issues:** `create_issue`, `update_issue`, `issue_state_change`, `add_issue_labels`/`remove_issue_labels`, `search_issues` sowie Label-CRUD auf Repo- und Organisationsebene.
+  - **Kommentare:** vollständiges CRUD, dazu Anhänge.
+  - **Abhängigkeiten:** `list_issue_dependencies`, `list_issue_dependents`, `add_issue_dependency`, `remove_issue_dependency`. Die repo-übergreifende Form nutzt `depends_on_owner`/`depends_on_repo`.
+  - **PRs:** `create_pull_request`, `update_pull_request`, `get_pull_request_diff`, `list_pull_request_files`, `merge_pull_request` (merge/rebase/squash, Branch löschen), `create_pull_review` (APPROVED/REQUEST_CHANGES/COMMENT mit Inline-Kommentaren).
+  - **Sonstiges:** Releases, Wiki, Actions-Läufe und -Logs (Forgejo v16+), Pakete, Benachrichtigungen.
+  - **CLI-Modus:** Das Binary kann Tools auch ohne MCP aufrufen, mit JSON auf stdout.
+- **Lücken:** keine für „Repos anlegen + Issues/PRs bearbeiten + Abhängigkeiten“. Die einzige Lücke ist die Beschränkung auf eine Instanz pro Prozess.
 
-## 2. gitea-mcp (official, gitea.com/gitea/gitea-mcp)
+## 2. gitea-mcp (offiziell, gitea.com/gitea/gitea-mcp)
 
-- **Maintenance:** active, maintained by the Gitea org. v1.7.0 released 2026-08-27 and v1.6.0 on 2026-07-30 (gitea.com releases API).
-- **Auth:** `GITEA_ACCESS_TOKEN` / `-T` and `GITEA_HOST` / `-H`, where flags win over env. In HTTP mode it accepts `Authorization: Bearer|token`.
-  - The README gives a Claude Code one-liner: `claude mcp add --transport stdio --scope user gitea --env GITEA_ACCESS_TOKEN=… --env GITEA_HOST=… -- go run gitea.com/gitea/gitea-mcp@latest -t stdio`.
-  - Read-only mode is `-r` / `GITEA_READONLY`. Tool filtering is `-S` / `GITEA_SCOPES` and `-O` / `GITEA_TOOLS`.
-- **Multiple Instances:** no, there is one host per process.
-- **Coverage (README table):**
-  - `create_repo`: source `operation/repo/repo.go` has an optional `organization` param that calls `CreateOrgRepo`.
+- **Pflege:** aktiv, gepflegt von der Gitea-Organisation. v1.7.0 erschien am 2026-08-27, v1.6.0 am 2026-07-30 (gitea.com-Release-API).
+- **Authentifizierung:** `GITEA_ACCESS_TOKEN` / `-T` und `GITEA_HOST` / `-H`, wobei Flags Vorrang vor Env haben. Im HTTP-Modus wird `Authorization: Bearer|token` akzeptiert.
+  - Das README nennt einen Claude-Code-Einzeiler: `claude mcp add --transport stdio --scope user gitea --env GITEA_ACCESS_TOKEN=… --env GITEA_HOST=… -- go run gitea.com/gitea/gitea-mcp@latest -t stdio`.
+  - Nur-Lese-Modus ist `-r` / `GITEA_READONLY`. Tool-Filter sind `-S` / `GITEA_SCOPES` und `-O` / `GITEA_TOOLS`.
+- **Mehrere Instanzen:** nein, ein Host pro Prozess.
+- **Abdeckung (Tabelle im README):**
+  - `create_repo`: Quelle `operation/repo/repo.go` hat einen optionalen Parameter `organization`, der `CreateOrgRepo` aufruft.
   - `fork_repo`.
-  - `issue_read` / `issue_write`: "create, update, manage comments, labels and dependencies".
-  - `pull_request_write`: create, update, close, reopen, merge, update branch, reviewers.
+  - `issue_read` / `issue_write`: „create, update, manage comments, labels and dependencies“.
+  - `pull_request_write`: anlegen, ändern, schließen, wieder öffnen, mergen, Branch aktualisieren, Reviewer.
   - `pull_request_review_write`.
-  - Also labels, milestones, projects, wiki, Actions, releases, files, branches and tags.
-  - Tools are consolidated and action-based (a `method` parameter).
-- **Forgejo compatibility:** not mentioned in the README. It targets the Gitea API, and Forgejo 16 advertises Gitea 1.22 API compatibility. Newer Gitea-only endpoints (for example Gitea projects, if called) may 404 on Forgejo. This is an inference and was not tested here.
-- **Gaps:** none for the core needs, apart from single-Instance and unverified Forgejo drift.
+  - Außerdem Labels, Meilensteine, Projekte, Wiki, Actions, Releases, Dateien, Branches und Tags.
+  - Die Tools sind zusammengefasst und aktionsbasiert (ein `method`-Parameter).
+- **Forgejo-Kompatibilität:** im README nicht erwähnt. Das Ziel ist die Gitea-API, und Forgejo 16 wirbt mit Gitea-1.22-API-Kompatibilität. Neuere, nur in Gitea vorhandene Endpunkte (z. B. Gitea-Projekte, falls aufgerufen) können auf Forgejo 404 liefern. Das ist eine Schlussfolgerung und wurde hier nicht getestet.
+- **Lücken:** keine für die Kernanforderungen, abgesehen von einer Instanz pro Prozess und unverifizierten Abweichungen zu Forgejo.
 
-## 3. tea (official Gitea CLI, gitea.com/gitea/tea)
+## 3. tea (offizielle Gitea-CLI, gitea.com/gitea/tea)
 
-- **Maintenance:** active. v0.16.0 released 2026-09-10 and v0.15.1 on 2026-08-02 (gitea.com releases API).
-- **Auth:** `tea login add` with `--url/-u`, `--token/-t`, `--name/-n`, `--insecure`, `--oauth`, `--ssh-agent-key`, `--password` (which mints a token), `--scopes`, and `--no-version-check`. Logins are stored in `$XDG_CONFIG_HOME/tea` (`docs/CLI.md`, README). `--git-credentials` registers tea as a git credential helper. No env-var-only token mode is documented.
-- **Multiple Instances:** yes. It keeps named logins, and every command takes `--login/-l` or `--remote/-R` to discover the login from the git remote.
-- **Coverage (`docs/CLI.md`):**
-  - `repos create|create-from-template|fork|migrate|delete|edit` (with `--owner` for orgs in list).
+- **Pflege:** aktiv. v0.16.0 erschien am 2026-09-10, v0.15.1 am 2026-08-02 (gitea.com-Release-API).
+- **Authentifizierung:** `tea login add` mit `--url/-u`, `--token/-t`, `--name/-n`, `--insecure`, `--oauth`, `--ssh-agent-key`, `--password` (erzeugt einen Token), `--scopes` und `--no-version-check`. Logins werden in `$XDG_CONFIG_HOME/tea` gespeichert (`docs/CLI.md`, README). `--git-credentials` registriert tea als Git-Credential-Helper. Ein Modus mit Token allein aus einer Umgebungsvariable ist nicht dokumentiert.
+- **Mehrere Instanzen:** ja. Es verwaltet benannte Logins, und jeder Befehl nimmt `--login/-l` oder `--remote/-R`, um den Login aus dem Git-Remote zu ermitteln.
+- **Abdeckung (`docs/CLI.md`):**
+  - `repos create|create-from-template|fork|migrate|delete|edit` (mit `--owner` für Organisationen bei list).
   - `issues create|edit|close|reopen`.
   - `comments add|list|edit|delete`.
   - `pulls create|review|approve|reject|merge|checkout|review-comments|resolve`.
-  - Also labels, milestones, releases, orgs, actions, webhooks, wiki, and admin.
-  - `--output json` on many commands.
-  - **`tea api`** makes authenticated arbitrary requests (`-X`, `-f/-F`, `-d`, `--login`), much like `gh api`.
-- **Gaps:** no issue-dependency subcommand. `tea api -X POST /repos/{o}/{r}/issues/{n}/dependencies` covers it. The Gitea version check can be skipped with `--no-version-check` if Forgejo's version string trips it.
+  - Außerdem Labels, Meilensteine, Releases, Organisationen, Actions, Webhooks, Wiki und Admin.
+  - `--output json` bei vielen Befehlen.
+  - **`tea api`** stellt beliebige authentifizierte Anfragen (`-X`, `-f/-F`, `-d`, `--login`), ähnlich wie `gh api`.
+- **Lücken:** kein Unterbefehl für Issue-Abhängigkeiten. `tea api -X POST /repos/{o}/{r}/issues/{n}/dependencies` deckt das ab. Die Gitea-Versionsprüfung lässt sich mit `--no-version-check` überspringen, falls Forgejos Versionsstring sie stört.
 
 ## 4. fj / forgejo-cli (codeberg.org/forgejo-contrib/forgejo-cli)
 
-- **Maintenance:** active but slower. v0.6.0 released 2026-07-19 and v0.5.0 on 2026-04-16 (Codeberg releases API). It is Forgejo-native and written in Rust. Don't confuse it with this repo's `fj` API helper script.
-- **Auth (wiki "Authentication"):**
-  - `fj auth add-key` means you paste an application token interactively.
-  - `fj auth login` uses OAuth, but only for allow-listed Instances (Codeberg, code.forgejo.org and others). You can extend the list via `~/.config/forgejo-cli/client_ids`.
-  - A localhost Instance needs `add-key`. There is no documented env-var token, which makes non-interactive setup awkward.
-- **Multiple Instances:** yes. Keys are per host, chosen by `-H/--host` or inferred from the git remote.
-- **Coverage (README and wiki):**
+- **Pflege:** aktiv, aber langsamer. v0.6.0 erschien am 2026-07-19, v0.5.0 am 2026-04-16 (Codeberg-Release-API). Forgejo-nativ und in Rust geschrieben. Nicht mit dem `fj`-API-Hilfsskript dieses Repos verwechseln.
+- **Authentifizierung (Wiki „Authentication“):**
+  - `fj auth add-key` bedeutet, einen Anwendungs-Token interaktiv einzufügen.
+  - `fj auth login` nutzt OAuth, aber nur für freigegebene Instanzen (Codeberg, code.forgejo.org und andere). Die Liste lässt sich über `~/.config/forgejo-cli/client_ids` erweitern.
+  - Eine localhost-Instanz braucht `add-key`. Ein Token per Umgebungsvariable ist nicht dokumentiert, was eine nicht-interaktive Einrichtung umständlich macht.
+- **Mehrere Instanzen:** ja. Schlüssel gelten pro Host, gewählt über `-H/--host` oder aus dem Git-Remote abgeleitet.
+- **Abdeckung (README und Wiki):**
   - `fj repo create` (`--private`, `--push`, `--remote`), fork, migrate, delete, edit.
-  - Issues: create, edit title/body/labels, comment, close `--with-msg`.
-  - PRs: create (including AGit PRs with no fork) and merge.
-  - Also orgs, teams, releases, and actions.
-- **Gaps:** no documented issue dependencies and no documented generic `api` passthrough. Interactive editor defaults also need flags such as `--body` to stay non-interactive.
+  - Issues: anlegen, Titel/Body/Labels ändern, kommentieren, schließen mit `--with-msg`.
+  - PRs: anlegen (auch AGit-PRs ohne Fork) und mergen.
+  - Außerdem Organisationen, Teams, Releases und Actions.
+- **Lücken:** keine dokumentierten Issue-Abhängigkeiten und kein dokumentiertes generisches `api`-Passthrough. Interaktive Editor-Voreinstellungen brauchen zudem Flags wie `--body`, um nicht-interaktiv zu bleiben.
 
-## 5. Other / long tail
+## 5. Sonstiges / Randerscheinungen
 
-- A search turns up several single-author Forgejo MCP servers: `raohwork/forgejo-mcp`, `Sqcows`/SquareCows `forgejo-mcp` ("103 tools"), `teran/mcp-forgejo`, `kepatrick/forgejo-mcp` (governance dashboard), `minhcuongvu`, `nsvk13`, and an npm `@ric_/forgejo-mcp`. None was evaluated in depth. They are listed so they aren't rediscovered, and they are not recommended over the two maintained servers above.
-- **Forgejo itself** ships no built-in MCP endpoint. Nothing was found in release coverage through v16.0.x.
-- **Raw REST** covers everything, including dependencies (verified on the local Instance), with an `Authorization: token` header. It is what this repo's `fj` helper script already does.
+- Eine Suche findet mehrere Forgejo-MCP-Server einzelner Autoren: `raohwork/forgejo-mcp`, `Sqcows`/SquareCows `forgejo-mcp` („103 tools“), `teran/mcp-forgejo`, `kepatrick/forgejo-mcp` (Governance-Dashboard), `minhcuongvu`, `nsvk13` und ein npm-Paket `@ric_/forgejo-mcp`. Keiner wurde eingehend geprüft. Sie sind aufgeführt, damit sie nicht erneut gesucht werden, und werden nicht gegenüber den beiden gepflegten Servern oben empfohlen.
+- **Forgejo selbst** liefert keinen eingebauten MCP-Endpunkt. In den Release-Notes bis v16.0.x fand sich nichts.
+- **Reines REST** deckt alles ab, einschließlich Abhängigkeiten (auf der lokalen Instanz geprüft), mit einem `Authorization: token`-Header. Genau das tut das `fj`-Hilfsskript dieses Repos bereits.
 
-## Implications for igit
+## Folgerungen für igit
 
-1. The best MCP option is **forgejo-mcp**, because it is Forgejo-native, has explicit dependency tools and supports org repo creation. It is registered once per Instance with `--url` plus `FORGEJO_ACCESS_TOKEN`. `gitea-mcp` is a close second, with official backing and a Claude Code one-liner.
-2. Neither MCP server handles several Instances in one process. A multi-Instance design needs either one MCP server entry per Instance or a CLI with named logins (`tea --login`).
-3. `tea` plus `tea api` is the most complete non-MCP route, and it is multi-Instance by design.
-4. Installing any of these is a user-level change and was deliberately not done in this research.
+1. Die beste MCP-Option ist **forgejo-mcp**, weil es Forgejo-nativ ist, explizite Abhängigkeits-Tools hat und Repo-Anlage in Organisationen unterstützt. Es wird einmal pro Instanz mit `--url` plus `FORGEJO_ACCESS_TOKEN` registriert. `gitea-mcp` ist knapp dahinter, mit offizieller Unterstützung und einem Claude-Code-Einzeiler.
+2. Keiner der MCP-Server bedient mehrere Instanzen in einem Prozess. Ein Design für mehrere Instanzen braucht entweder einen MCP-Server-Eintrag pro Instanz oder eine CLI mit benannten Logins (`tea --login`).
+3. `tea` plus `tea api` ist der vollständigste Weg ohne MCP und von Haus aus mehrinstanzfähig.
+4. Die Installation eines dieser Werkzeuge ist eine Änderung auf Nutzerebene und wurde in dieser Recherche bewusst nicht vorgenommen.
 
-## Sources
+## Quellen
 
-- forgejo-mcp README (Codeberg mirror): https://codeberg.org/goern/forgejo-mcp/raw/branch/main/README.md. Also `operation/repo/repo.go` in the same repo. New home: https://git.b4mad.industries/agentic-forges/forgejo-mcp
-- gitea-mcp README: https://gitea.com/gitea/gitea-mcp/raw/branch/main/README.md. Also `operation/repo/repo.go`. Releases: https://gitea.com/api/v1/repos/gitea/gitea-mcp/releases
-- tea README and generated CLI docs: https://gitea.com/gitea/tea (`docs/CLI.md`). Releases: https://gitea.com/api/v1/repos/gitea/tea/releases
-- forgejo-cli README and wiki (Authentication, Repositories, Issues): https://codeberg.org/forgejo-contrib/forgejo-cli. Releases: https://codeberg.org/api/v1/repos/forgejo-contrib/forgejo-cli/releases
-- Local Instance: `GET /api/v1/version`, `GET /api/v1/repos/dreamer/igit/issues/4/dependencies`
+- forgejo-mcp README (Codeberg-Spiegel): https://codeberg.org/goern/forgejo-mcp/raw/branch/main/README.md. Außerdem `operation/repo/repo.go` im selben Repo. Neue Heimat: https://git.b4mad.industries/agentic-forges/forgejo-mcp
+- gitea-mcp README: https://gitea.com/gitea/gitea-mcp/raw/branch/main/README.md. Außerdem `operation/repo/repo.go`. Releases: https://gitea.com/api/v1/repos/gitea/gitea-mcp/releases
+- tea README und generierte CLI-Doku: https://gitea.com/gitea/tea (`docs/CLI.md`). Releases: https://gitea.com/api/v1/repos/gitea/tea/releases
+- forgejo-cli README und Wiki (Authentication, Repositories, Issues): https://codeberg.org/forgejo-contrib/forgejo-cli. Releases: https://codeberg.org/api/v1/repos/forgejo-contrib/forgejo-cli/releases
+- Lokale Instanz: `GET /api/v1/version`, `GET /api/v1/repos/dreamer/igit/issues/4/dependencies`
