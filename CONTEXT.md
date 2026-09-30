@@ -35,6 +35,13 @@ _Vermeiden_: Enrollment, Onboarding
 Der Lauf des Skills, der eine Instanz findet oder installiert und Bot-Konto, Client-Schlüssel, Host-Key-Pinning und Token einrichtet. Wiederholte Läufe holen in der UI angelegte Repos per Abgleich nach.
 _Vermeiden_: Installation (meint nur das Aufsetzen von Forgejo selbst), Setup
 
+**Projekt**:
+Ein Forgejo-Projektboard, das der Betreiber als Board-Ansicht über die Issues eines Repos nutzt; er legt es selbst an, weil Forgejo keine Projekt-API hat.
+_Vermeiden_: Projekt im Sinne des Arbeitsverzeichnisses oder des Vorhabens
+
+**Meilenstein**:
+Die automatische Gruppierung der Issues eines Repos; der Skill legt ihn an, und Claude ordnet jedes neue Issue ihm zu.
+
 **Zero-Touch**:
 Erfordert vom Betreiber keine manuelle Handlung über das Starten der Installation hinaus.
 
@@ -42,10 +49,11 @@ Erfordert vom Betreiber keine manuelle Handlung über das Starten der Installati
 
 - Eine **Instanz** hat genau ein **Bot-Konto**
 - Ein **Bot-Konto** hat einen **Client-Schlüssel** pro **Claude-Client**
+- Ein Repo hat einen **Meilenstein**, dem jedes von Claude angelegte Issue angehört
+- Ein **Projekt** zeigt die Issues eines **Meilensteins** als Board
 - Ein **Claude-Client** pinnt den Host-Key jeder **Instanz**, mit der er spricht
 
 ## Markierte Mehrdeutigkeiten
 
-- "Projekt": ungeklärt, ob ein Forgejo-Projektboard gemeint ist oder eine Gruppierung von Issues allgemein; Forgejo 16 hat keine Projekt-API. Nicht mit dem Arbeitsverzeichnis verwechseln, in dem Claude läuft.
 
 - "API-Key" in der ursprünglichen Idee: gemeint ist ein Forgejo-Access-Token des **Bot-Kontos**; ob er sich auf ein Repository beschränken lässt, war offen — Forgejo 16 unterstützt repo-beschränkte Tokens über die API.
