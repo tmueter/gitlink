@@ -1,11 +1,11 @@
 ---
-name: igit
-description: Forgejo + Claude einrichten / set up Forgejo for Claude. Use when the user wants to connect Claude to a Forgejo instance (einrichten, setup, install Forgejo), create a Forgejo repository for the current directory (Repo anlegen, create repo), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
+name: gitlink
+description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo instance (einrichten, setup, install Forgejo), create a Forgejo repository for the current directory (Repo anlegen, create repo), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
 ---
 
-# igit
+# gitlink
 
-Der Skill richtet die Zusammenarbeit zwischen einer Forgejo-Instanz und Claude ein. Alles Deterministische erledigt das mitgelieferte Skript `igit.py` im Basisverzeichnis dieses Skills. Deine Aufgabe ist es, die Rückfragen zu stellen und das Skript mit den Antworten aufzurufen.
+Der Skill richtet die Zusammenarbeit zwischen einer Forgejo-Instanz und Claude ein. Alles Deterministische erledigt das mitgelieferte Skript `gitlink.py` im Basisverzeichnis dieses Skills. Deine Aufgabe ist es, die Rückfragen zu stellen und das Skript mit den Antworten aufzurufen.
 
 ## Sprache
 
@@ -14,7 +14,7 @@ Antworte in der Sprache des Betreibers. Übergib dem Skript immer `--lang de` od
 ## Skript aufrufen
 
 ```
-python3 <basisverzeichnis>/igit.py --lang <de|en> <unterbefehl> [optionen]
+python3 <basisverzeichnis>/gitlink.py --lang <de|en> <unterbefehl> [optionen]
 ```
 
 Jeder Aufruf gibt genau ein JSON-Objekt aus. Bei `"ok": true` stehen die Ergebnisse unter `result` und Hinweise unter `warnings`; gib jede Warnung dem Betreiber sinngemäß weiter. Bei `"ok": false` nennen `error` und `details`, was fehlt; die Tabelle unter [Fehlercodes](#fehlercodes) sagt, was du dann tust.
