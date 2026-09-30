@@ -1,6 +1,6 @@
 # Spezifikation: Skill `igit`
 
-Diese Spezifikation fasst die Entscheidungen der Wayfinder-Map [Wayfinder: Zero-Touch Forgejo + Claude](http://localhost:3000/dreamer/igit/issues/1) zusammen. Jede Entscheidung verweist auf das Ticket, in dem sie begründet ist. Begriffe folgen dem Glossar in [`CONTEXT.md`](../CONTEXT.md).
+Diese Spezifikation fasst die Entscheidungen der Wayfinder-Map „Wayfinder: Zero-Touch Forgejo + Claude“ zusammen. Jede Entscheidung nennt den Titel des Tickets, in dem sie begründet ist. Die Tickets liegen auf der Forgejo-Instanz des Autors und sind nicht öffentlich. Begriffe folgen dem Glossar in [`CONTEXT.md`](../CONTEXT.md).
 
 Punkte, die in der Map nicht entschieden wurden, aber für die Umsetzung eine Festlegung brauchen, sind mit **[Vorschlag]** markiert. Punkte, deren Verhalten nicht geprüft wurde, sind mit **[Unsicher]** markiert.
 
@@ -10,11 +10,11 @@ Der Skill `igit` automatisiert die Ersteinrichtung zwischen einer Forgejo-Instan
 
 Der Betreiber handelt nur an drei Stellen selbst: Er ruft den Skill auf, beantwortet dessen Rückfragen und legt am Ende das Projektboard in der Forgejo-Oberfläche an.
 
-Forgejo wird nicht verändert. Es gibt keinen Fork ([Forgejo forken oder Zero-Touch als externe Werkzeuge bauen?](http://localhost:3000/dreamer/igit/issues/5)). Stößt die Umsetzung auf eine echte Lücke in Forgejo, wird sie upstream eingereicht.
+Forgejo wird nicht verändert. Es gibt keinen Fork („Forgejo forken oder Zero-Touch als externe Werkzeuge bauen?“). Stößt die Umsetzung auf eine echte Lücke in Forgejo, wird sie upstream eingereicht.
 
 ## 2. Aufbau
 
-Der Skill besteht aus zwei Teilen ([Welche Teile des Skills sind Anweisung, welche ein mitgeliefertes Skript?](http://localhost:3000/dreamer/igit/issues/13)):
+Der Skill besteht aus zwei Teilen („Welche Teile des Skills sind Anweisung, welche ein mitgeliefertes Skript?“):
 
 - **Skill-Anweisungen (`SKILL.md`):** Claude stellt die Rückfragen an den Betreiber und ruft mit den Antworten das Skript auf. Claude führt keine API-Aufrufe und keine Dateioperationen selbst aus.
 - **Mitgeliefertes Skript (`igit.py`):** Python 3, ausschließlich Standardbibliothek. Es erledigt alle deterministischen Schritte: API-Aufrufe, Container-Befehle, Schlüssel, Dateien und Konfiguration. Jeder Schritt ist idempotent: Das Skript prüft zuerst den Ist-Zustand und legt nur an, was fehlt. Ein wiederholter Lauf ändert nichts Bestehendes.
@@ -48,7 +48,7 @@ Alle Geheimnisse liegen in eigenen Dateien mit Modus `0600` in Verzeichnissen mi
 
 ### 4.1 Instanz finden
 
-Quelle: [Wie erkennt der Skill, ob und wo eine Instanz läuft?](http://localhost:3000/dreamer/igit/issues/9)
+Quelle: „Wie erkennt der Skill, ob und wo eine Instanz läuft?“
 
 Das Skript sucht in dieser Reihenfolge:
 
@@ -61,7 +61,7 @@ Ein Kandidat gilt als Forgejo-Instanz, wenn `GET /api/v1/version` eine Forgejo-V
 
 ### 4.2 Instanz installieren (nur auf Wunsch)
 
-Quellen: [Wie installiert der Skill Forgejo, wenn keine Instanz läuft?](http://localhost:3000/dreamer/igit/issues/10), [Welche Wege gibt es, Forgejo 16 nicht-interaktiv zu installieren?](http://localhost:3000/dreamer/igit/issues/8)
+Quellen: „Wie installiert der Skill Forgejo, wenn keine Instanz läuft?“, „Welche Wege gibt es, Forgejo 16 nicht-interaktiv zu installieren?“
 
 - Installationsweg ist Docker Compose mit dem rootful Image `codeberg.org/forgejo/forgejo:16`. Docker muss vorhanden sein. Fehlt Docker, bricht der Skill mit einer klaren Meldung ab.
 - Das Verzeichnis ist `~/forgejo`. Die Ports sind 3000 für Web und 2222 für SSH. Nur wenn ein Port belegt ist, fragt Claude nach einem anderen.
@@ -74,11 +74,11 @@ Danach geht es weiter wie bei einer gefundenen Instanz.
 
 ### 4.3 Gesundheitsprüfung
 
-Das Skript prüft eine gefundene Instanz auf bekannte Schwächen, insbesondere ein leeres `SECRET_KEY`. Befunde werden gemeldet, samt Folgen. Das Skript ändert nichts an der Instanz, weil ein nachträglich gesetzter `SECRET_KEY` bereits verschlüsselte Daten unlesbar macht ([Wie erkennt der Skill, ob und wo eine Instanz läuft?](http://localhost:3000/dreamer/igit/issues/9)).
+Das Skript prüft eine gefundene Instanz auf bekannte Schwächen, insbesondere ein leeres `SECRET_KEY`. Befunde werden gemeldet, samt Folgen. Das Skript ändert nichts an der Instanz, weil ein nachträglich gesetzter `SECRET_KEY` bereits verschlüsselte Daten unlesbar macht („Wie erkennt der Skill, ob und wo eine Instanz läuft?“).
 
 ### 4.4 Vorübergehender Admin-Token
 
-Quelle: [Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerrufen?](http://localhost:3000/dreamer/igit/issues/7)
+Quelle: „Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerrufen?“
 
 - Das Skript erzeugt für die Dauer des Laufs einen Admin-Token des Betreibers mit `docker exec -u git <container> forgejo admin user generate-access-token -u <betreiber> --raw`, mit den Scopes `write:admin`, `write:repository`, `write:user` und `write:issue`.
 - Der Token existiert nur im Speicher des Skripts und wird am Ende des Laufs gelöscht, auch wenn der Lauf fehlschlägt. Im Alltag hat Claude keine Admin-Rechte.
@@ -87,7 +87,7 @@ Quelle: [Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerru
 ### 4.5 Bot-Konto
 
 - Das Skript legt das Bot-Konto an, falls es fehlt. **[Vorschlag]** Name `claude-bot`, voller Name „Claude (Bot)“.
-- Forgejo kennt keinen zugänglichen Bot-Kontotyp. Das Bot-Konto ist daher ein normales Konto, gehärtet mit `restricted: true`, `max_repo_creation: 0` und `allow_create_organization: false`. Wegen `restricted` sieht es nur Repositories, in die es ausdrücklich eingetragen ist ([Was kann Forgejo für Bootstrap und Registrierung ohne Codeänderungen automatisieren?](http://localhost:3000/dreamer/igit/issues/2)).
+- Forgejo kennt keinen zugänglichen Bot-Kontotyp. Das Bot-Konto ist daher ein normales Konto, gehärtet mit `restricted: true`, `max_repo_creation: 0` und `allow_create_organization: false`. Wegen `restricted` sieht es nur Repositories, in die es ausdrücklich eingetragen ist („Was kann Forgejo für Bootstrap und Registrierung ohne Codeänderungen automatisieren?“).
 - Das Passwort ist zufällig und wird nicht gespeichert. Das Bot-Konto meldet sich nur per Token und SSH an. **[Unsicher]** `prohibit_login` wird nicht gesetzt, weil nicht geprüft ist, ob Token und SSH danach weiter funktionieren.
 
 ### 4.6 Client-Schlüssel und Host-Key-Pinning
@@ -104,7 +104,7 @@ Quelle: [Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerru
 
 ### 4.8 forgejo-mcp einrichten
 
-Quelle: [Wie spricht Claude jenseits von Git mit der Instanz?](http://localhost:3000/dreamer/igit/issues/6), Recherche in [Welche bestehenden Integrationen lassen Claude Code eine Forgejo-Instanz steuern?](http://localhost:3000/dreamer/igit/issues/4)
+Quelle: „Wie spricht Claude jenseits von Git mit der Instanz?“, Recherche in „Welche bestehenden Integrationen lassen Claude Code eine Forgejo-Instanz steuern?“
 
 - Pro Instanz gibt es einen MCP-Server-Eintrag, registriert mit `claude mcp add --scope user forgejo-<instanz> -- ~/.config/igit/<instanz>/start-mcp`.
 - Der Starter liest den Token aus der Datei, übergibt ihn als `FORGEJO_ACCESS_TOKEN` und startet forgejo-mcp mit `--url`. Bei einem Client auf einem anderen Rechner öffnet er vorher den SSH-Tunnel (siehe Abschnitt 7).
@@ -112,11 +112,11 @@ Quelle: [Wie spricht Claude jenseits von Git mit der Instanz?](http://localhost:
 
 ### 4.9 Abgleich bestehender Repositories
 
-Das Skript listet die Repositories des Betreibers und seiner Organisationen, in denen das Bot-Konto nicht eingetragen ist. Claude fragt den Betreiber, welche davon freigegeben werden sollen. Für die gewählten Repositories trägt das Skript das Bot-Konto mit Schreibrecht ein ([Welche Schritte führt der Skill beim Anlegen eines Repos aus?](http://localhost:3000/dreamer/igit/issues/12)). Der Abgleich läuft bei jedem Aufruf von `einrichten`. Einen dauerhaft laufenden Dienst gibt es nicht.
+Das Skript listet die Repositories des Betreibers und seiner Organisationen, in denen das Bot-Konto nicht eingetragen ist. Claude fragt den Betreiber, welche davon freigegeben werden sollen. Für die gewählten Repositories trägt das Skript das Bot-Konto mit Schreibrecht ein („Welche Schritte führt der Skill beim Anlegen eines Repos aus?“). Der Abgleich läuft bei jedem Aufruf von `einrichten`. Einen dauerhaft laufenden Dienst gibt es nicht.
 
 ## 5. Unterbefehl `repo`
 
-Quelle: [Welche Schritte führt der Skill beim Anlegen eines Repos aus?](http://localhost:3000/dreamer/igit/issues/12), [Was bedeutet „Projekt“, und wie bildet der Skill es ohne Projekt-API ab?](http://localhost:3000/dreamer/igit/issues/11)
+Quelle: „Welche Schritte führt der Skill beim Anlegen eines Repos aus?“, „Was bedeutet „Projekt“, und wie bildet der Skill es ohne Projekt-API ab?“
 
 1. **Eigentümer:** Hat der Betreiber Organisationen, fragt Claude, ob das Repository unter seinem Konto oder unter einer Organisation liegen soll. Sonst liegt es unter dem Konto des Betreibers.
 2. **Name und Sichtbarkeit:** Claude fragt beides jedes Mal.
@@ -137,7 +137,7 @@ Diese Unterbefehle kamen nach Abschluss der Map auf Wunsch des Betreibers hinzu.
 
 ## 6. Unterbefehl `widerrufen`
 
-Quelle: [Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerrufen?](http://localhost:3000/dreamer/igit/issues/7)
+Quelle: „Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerrufen?“
 
 - Claude fragt, welcher Client widerrufen werden soll. Das Skript listet dazu die Tokens `igit-<client>` des Bot-Kontos.
 - Das Skript löscht mit einem vorübergehenden Admin-Token den Token und den SSH-Schlüssel genau dieses Clients am Bot-Konto. Andere Clients bleiben unberührt.
@@ -145,7 +145,7 @@ Quelle: [Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerru
 
 ## 7. Clients auf anderen Rechnern
 
-Quelle: [Wie registriert der Skill einen Claude-Client auf einem anderen Rechner?](http://localhost:3000/dreamer/igit/issues/14)
+Quelle: „Wie registriert der Skill einen Claude-Client auf einem anderen Rechner?“
 
 - Das Anfangsvertrauen stammt aus dem bestehenden SSH-Zugang des Betreibers zum Host der Instanz. Das Skript führt alle Admin-Schritte über diese Verbindung aus (`ssh <host> docker exec …`). Es gibt keinen Einmal-Code und keinen manuellen Schritt.
 - Den Host-Key der Instanz liest das Skript auf dem Host und überträgt ihn über dieselbe SSH-Verbindung.

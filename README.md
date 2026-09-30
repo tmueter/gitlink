@@ -15,7 +15,7 @@ Der Skill versteht Deutsch und Englisch: Er antwortet in der Sprache, in der man
 | [`CONTEXT.md`](CONTEXT.md) | Glossar der Fachbegriffe (Instanz, Betreiber, Bot-Konto, Client-Schlüssel …) |
 | Branches `research/*` | Rechercheergebnisse mit Quellenangaben, auf die sich die Entscheidungen stützen |
 
-Die Entscheidungen hinter der Spezifikation sind als geschlossene Issues dokumentiert; die Übersicht bietet die Map [Wayfinder: Zero-Touch Forgejo + Claude](http://localhost:3000/dreamer/igit/issues/1).
+Die Entscheidungen hinter der Spezifikation sind als geschlossene Issues der Map „Wayfinder: Zero-Touch Forgejo + Claude“ auf der Forgejo-Instanz des Autors dokumentiert. Diese Issues sind nicht öffentlich; die Spezifikation fasst ihre Ergebnisse vollständig zusammen.
 
 ## Voraussetzungen
 
