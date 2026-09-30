@@ -89,8 +89,12 @@ MSG = {
         "en": "No admin access to the instance found: no matching {platform} container. Specify `--container` or `--admin-exec`.",
     },
     "admin_token_required": {
-        "de": "Für GitLab wird ein Admin-Token (Scope `api`, ggf. `admin_mode`) benötigt. Lege ihn im eigenen Terminal ab: `read -rs T && printf %s \"$T\" > {path} && chmod 600 {path}`.",
-        "en": "GitLab needs an admin token (scope `api`, plus `admin_mode` if enabled). Store it from your own terminal: `read -rs T && printf %s \"$T\" > {path} && chmod 600 {path}`.",
+        "de": "Für GitLab wird ein Admin-Token gebraucht. 1. In GitLab anlegen: {create_url} (Scope `api`; ist Admin Mode aktiv, zusätzlich `admin_mode`). 2. Im eigenen Terminal ablegen, nie im Chat: `read -rs T && printf %s \"$T\" > {path} && chmod 600 {path}`. 3. Danach `einrichten` erneut ausführen.",
+        "en": "GitLab needs an admin token. 1. Create it in GitLab: {create_url} (scope `api`; add `admin_mode` if Admin Mode is on). 2. Store it from your own terminal, never in chat: `read -rs T && printf %s \"$T\" > {path} && chmod 600 {path}`. 3. Then run `setup` again.",
+    },
+    "auth_proxy": {
+        "de": "{url} leitet auf {host} um: Vor der Instanz steht ein Anmelde-Proxy (z. B. Microsoft Entra Application Proxy). Programme kommen ohne Anmeldung im Browser nicht durch, auch nicht mit Token. Nötig ist ein Zugang ohne Proxy (VPN, Sprungrechner per `--ssh-host`) oder eine Ausnahme für `/api/v4` am Proxy.",
+        "en": "{url} redirects to {host}: an authentication proxy (e.g. Microsoft Entra Application Proxy) sits in front of the instance. Programs cannot pass without a browser login, not even with a token. Needed: access without the proxy (VPN, jump host via `--ssh-host`) or an exception for `/api/v4` at the proxy.",
     },
     "admin_token_invalid": {
         "de": "Der GitLab-Token in {path} ist ungültig, abgelaufen oder gehört keinem Administrator. Neuen Token dort ablegen.",
@@ -481,7 +485,9 @@ class Api:
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 status, raw = r.status, r.read()
+                check_redirect(self.base, r.geturl())
         except urllib.error.HTTPError as e:
+            check_redirect(self.base, e.geturl())
             status, raw = e.code, e.read()
         except (urllib.error.URLError, OSError) as e:
             raise Fail("api_error", status="-", method=method, path=path, body=str(e))
@@ -508,12 +514,21 @@ class Api:
             page += 1
 
 
+def check_redirect(start, final):
+    """Bricht ab, wenn eine Anfrage auf einen fremden Host umgeleitet wurde (Anmelde-Proxy)."""
+    a, b = urllib.parse.urlparse(start), urllib.parse.urlparse(final)
+    if (a.hostname, a.port) != (b.hostname, b.port):
+        raise Fail("auth_proxy", {"url": start, "redirect_host": b.hostname}, url=start, host=b.hostname)
+
+
 def get_json(url, timeout=5):
     """(status, json) ohne Authentifizierung; (None, None) bei Netzfehler."""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
+            check_redirect(url, r.geturl())
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
+        check_redirect(url, e.geturl())
         try:
             return e.code, json.loads(e.read())
         except ValueError:
@@ -969,7 +984,9 @@ class GitLab:
 
     def __enter__(self):
         if not self.token_file.exists():
-            raise Fail("admin_token_required", {"path": str(self.token_file)}, path=str(self.token_file))
+            create = f"{self.cfg['url']}/-/user_settings/personal_access_tokens?name={NAME}-admin&scopes=api"
+            raise Fail("admin_token_required", {"path": str(self.token_file), "create_url": create},
+                       path=str(self.token_file), create_url=create)
         try:
             if self.cfg.get("ssh_host"):
                 self._tunnel = Tunnel(self.cfg["ssh_host"], self.cfg["web_port"])
@@ -1241,7 +1258,12 @@ def cmd_discover(args):
     add("http://localhost:3000", "default-port")
     found = []
     for c in cands.values():
-        plat, version = detect_platform(c["url"])
+        try:
+            plat, version = detect_platform(c["url"])
+        except Fail as e:
+            c.update({"platform": None, "error": e.code, "redirect_host": e.details.get("redirect_host")})
+            found.append(c)
+            continue
         if plat:
             c.update({"platform": plat, "version": version})
             found.append(c)
@@ -1357,14 +1379,16 @@ def cmd_setup(args):
     inst = valid_name(args.instanz or slug(f"{remote.split('@')[-1] if remote else u.hostname}-{web_port}"))
     old = load_config(inst) or {}
     plat = args.platform or old.get("platform")
-    if not remote:
+    if plat:
+        detected = plat  # vorgegeben oder gespeichert; hinter einem Anmelde-Proxy geht Erkennung nicht
+        if not remote:
+            check_transport(url)
+    elif not remote:
         check_transport(url)
         detected, _ = detect_platform(url)
-    elif not plat:
+    else:
         with Tunnel(remote, web_port) as base:
             detected, _ = detect_platform(base)
-    else:
-        detected = plat
     if not detected:
         raise Fail("unsupported_platform", url=url)
     plat = plat or detected

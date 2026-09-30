@@ -384,6 +384,32 @@ class Detection(unittest.TestCase):
         self.addCleanup(srv.close)
         return srv.url
 
+    def test_auth_proxy_redirect_is_reported_not_parsed(self):
+        login = self.serve({})  # steht für login.microsoftonline.com
+
+        class Redirect(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", login + "/oauth2/authorize")
+                self.end_headers()
+
+        from http.server import ThreadingHTTPServer as S
+        srv = S(("127.0.0.1", 0), Redirect)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        url = f"http://localhost:{srv.server_address[1]}"
+        with self.assertRaises(gitlink.Fail) as e:
+            gitlink.detect_platform(url)
+        self.assertEqual(e.exception.code, "auth_proxy")
+        self.assertEqual(e.exception.details["redirect_host"], "127.0.0.1")
+        with self.assertRaises(gitlink.Fail) as e:
+            gitlink.Api(url, ("private", "t"), "/api/v4").call("GET", "/user")
+        self.assertEqual(e.exception.code, "auth_proxy")
+
     def test_forgejo_gitea_gitlab_and_unknown(self):
         forgejo = self.serve({"/api/forgejo/v1/version": (200, {"version": "16.0.5+gitea-1.22.0"}),
                               "/api/v1/version": (200, {"version": "16.0.5+gitea-1.22.0"})})
@@ -418,6 +444,17 @@ class GitLabAdapter(SandboxHome):
             gitlink.adapter(self.cfg).__enter__()
         self.assertEqual(e.exception.code, "admin_token_required")
         self.assertTrue(e.exception.details["path"].endswith("/gl/admin-token"))
+        self.assertEqual(e.exception.details["create_url"],
+                         f"{self.srv.url}/-/user_settings/personal_access_tokens?name=gitlink-admin&scopes=api")
+        self.assertIn(e.exception.details["create_url"], e.exception.message)
+
+    def test_setup_with_given_platform_asks_for_token_before_any_api_call(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            gitlink.main(["--lang", "de", "einrichten", "--url", "http://localhost:1", "--plattform", "gitlab",
+                          "--instanz", "gl", "--no-mcp"])
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["error"], "admin_token_required")  # Port 1 antwortet nicht: keine Erkennung versucht
 
     def test_full_flow(self):
         self.store_admin_token()

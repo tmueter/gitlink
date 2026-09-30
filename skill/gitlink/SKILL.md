@@ -29,7 +29,13 @@ Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. D
    - Keine: frage, ob und wo eine Instanz läuft (Adresse; bei einem anderen Rechner zusätzlich den SSH-Host, über den der Betreiber dorthin kommt) oder ob du eine installieren sollst. Installiert wird immer Forgejo; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen.
 2. **Installieren (nur auf Wunsch):** frage Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>`. Standard sind `~/forgejo` und die Ports 3000/2222; nur bei `port_busy` fragst du nach anderen Ports (`--web-port`, `--ssh-port`). Nenne dem Betreiber danach den Pfad der Passwortdatei aus `result.password_file`.
 3. **Einrichten:** `einrichten --url <url>`. Läuft die Instanz auf einem anderen Rechner, zusätzlich `--ssh-host <host>`; die URL ist dann die Adresse, unter der die Instanz auf diesem Rechner erreichbar ist (meist `http://localhost:3000`).
-   - **GitLab:** Der erste Lauf endet mit `admin_token_required`. Nenne dem Betreiber den Befehl aus `message`, mit dem er im **eigenen Terminal** einen Admin-Token (Scope `api`) in `details.path` ablegt, und wiederhole danach `einrichten`. Den Token nie im Chat erfragen.
+   - **GitLab, Token anlegen:** Endet der Lauf mit `admin_token_required`, halte an und gib dem Betreiber genau diese Schritte:
+     1. Token in GitLab anlegen über den Link `details.create_url` (Name und Scope `api` sind vorausgefüllt; ist Admin Mode aktiv, zusätzlich `admin_mode`).
+     2. Token im **eigenen Terminal** ablegen, mit dem Befehl aus `message` (Ziel `details.path`). Den Token nie im Chat erfragen oder annehmen.
+     3. Bescheid geben, wenn beides erledigt ist.
+
+     Warte auf die Bestätigung und wiederhole dann `einrichten`.
+   - **Anmelde-Proxy:** Endet der Lauf mit `auth_proxy`, steht vor der Instanz ein Proxy mit eigener Anmeldung (z. B. Microsoft Entra). Kein Token hilft dagegen. Erkläre das und frage nach einem Zugang ohne Proxy: VPN mit interner Adresse oder ein Rechner im Netz der Instanz (`--ssh-host`). Ist die Plattform bekannt, aber die Erkennung scheitert, übergib `--plattform gitlab`.
 4. **Abgleich:** Enthält `result.missing_repos` Einträge, zeige die Liste und frage, welche Repos Claude nutzen darf. Für die gewählten: `freigeben <eigentümer/repo> …`.
 5. **Abschluss:** fasse zusammen (Plattform, Instanz, Bot-Konto, SSH-Alias, MCP-Server). Den Neustart von Claude Code erwähnst du nur, wenn eine Warnung ihn verlangt.
 6. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
@@ -96,6 +102,7 @@ Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in
 | `no_admin_access` | Frage, in welchem Container Forgejo bzw. Gitea läuft (`--container`) oder mit welchem Befehl die CLI der Plattform aufgerufen wird (`--admin-exec`). |
 | `admin_token_required` | GitLab: Gib den Befehl aus `message` weiter; der Betreiber legt den Admin-Token im eigenen Terminal ab. Danach `einrichten` wiederholen. |
 | `admin_token_invalid` | GitLab: Der Token ist ungültig, abgelaufen oder kein Admin-Token; der Betreiber legt einen neuen unter `details.path` ab. |
+| `auth_proxy` | Siehe „Anmelde-Proxy“ unter `einrichten`. |
 | `unsupported_platform` | Unter der Adresse läuft weder Forgejo noch Gitea noch GitLab; frage nach der richtigen Adresse. |
 | `insecure_url` | Die Instanz ist nur per unverschlüsseltem HTTP über das Netz erreichbar. Frage nach dem SSH-Host für einen Tunnel (`--ssh-host`) oder einer HTTPS-Adresse. |
 | alle anderen | Gib `message` weiter und frage, wie der Betreiber fortfahren will. |
