@@ -1,115 +1,115 @@
-# Forgejo automation surface for bootstrap and enrollment
+# Forgejo-Automatisierungsfläche für Bootstrap und Registrierung
 
-Question (issue #2): using only Forgejo's admin CLI and REST API on the Instance's host, what can be done non-interactively to create users (incl. a Bot account), mint access tokens, register SSH public keys, add collaborators, create repos on behalf of a user/org, and read the Instance's SSH host key? And: can an access token be restricted to specific repositories?
+Frage (Issue #2): Was lässt sich allein mit Forgejos Admin-CLI und REST-API auf dem Host der Instanz nicht-interaktiv erledigen: Konten anlegen (inkl. Bot-Konto), Access-Tokens erzeugen, öffentliche SSH-Schlüssel hinterlegen, Mitarbeiter hinzufügen, Repos im Namen eines Kontos/einer Organisation anlegen und den SSH-Host-Key der Instanz auslesen? Und: Lässt sich ein Access-Token auf bestimmte Repositories beschränken?
 
-Target: Forgejo **16.0.5** (`GET /api/v1/version` → `16.0.5+gitea-1.22.0`). Sources:
+Ziel: Forgejo **16.0.5** (`GET /api/v1/version` → `16.0.5+gitea-1.22.0`). Quellen:
 
-- **[swagger]** the live instance's spec, `http://localhost:3000/swagger.v1.json` (fetched 2026-09-30).
-- **[src]** Forgejo source at tag `v16.0.5`, `https://codeberg.org/forgejo/forgejo/src/tag/v16.0.5/<path>`.
-- Read-only probe of the live instance (`GET /users/dreamer/tokens`).
+- **[swagger]** die Spezifikation der laufenden Instanz, `http://localhost:3000/swagger.v1.json` (abgerufen am 2026-09-30).
+- **[src]** Forgejo-Quellcode beim Tag `v16.0.5`, `https://codeberg.org/forgejo/forgejo/src/tag/v16.0.5/<pfad>`.
+- Lesende Abfrage der laufenden Instanz (`GET /users/dreamer/tokens`).
 
-Nothing was created, modified or deleted on the instance.
+Auf der Instanz wurde nichts angelegt, geändert oder gelöscht.
 
-## Short answer
+## Kurzantwort
 
-Everything on the list can be scripted with a site-admin token and no code changes. The one exception is reading the SSH host key: no API returns it, so it has to be read from disk or with `ssh-keyscan` on the host. Two more gaps: there is no "bot" user type exposed, and the CLI can only mint unrestricted tokens.
+Alles auf der Liste lässt sich mit einem Site-Admin-Token und ohne Codeänderungen skripten. Die einzige Ausnahme ist das Auslesen des SSH-Host-Keys: Keine API liefert ihn, er muss von der Platte oder per `ssh-keyscan` auf dem Host gelesen werden. Zwei weitere Lücken: Es gibt keinen zugänglichen „Bot“-Kontotyp, und die CLI kann nur unbeschränkte Tokens erzeugen.
 
-**Per-repo tokens: yes, over the API.** Forgejo 16 has repository-specific access tokens. `POST /users/{username}/tokens` and `POST /admin/users/{username}/tokens` accept `"repositories": [{"owner","name"}, ...]`. Such a token:
-- may only carry `read:repository`, `write:repository`, `read:issue` or `write:issue` scopes. `all`, `public-only` and every other category are rejected with 400.
-- keeps full access (up to the user's own permission) to the listed repos.
-- can still **read** public repos of public owners. It cannot see private repos, or repos of limited/private owners, that are not listed.
-- ignores site-admin override (`AllowAdminOverride() == false`).
+**Repo-beschränkte Tokens: ja, über die API.** Forgejo 16 hat repository-spezifische Access-Tokens. `POST /users/{username}/tokens` und `POST /admin/users/{username}/tokens` akzeptieren `"repositories": [{"owner","name"}, ...]`. Ein solcher Token:
+- darf nur die Scopes `read:repository`, `write:repository`, `read:issue` oder `write:issue` tragen. `all`, `public-only` und jede andere Kategorie werden mit 400 abgelehnt.
+- behält vollen Zugriff (bis zu den eigenen Rechten des Kontos) auf die aufgeführten Repos.
+- kann weiterhin öffentliche Repos öffentlicher Eigentümer **lesen**. Private Repos oder Repos eingeschränkter/privater Eigentümer, die nicht aufgeführt sind, sieht er nicht.
+- ignoriert den Site-Admin-Override (`AllowAdminOverride() == false`).
 
-The CLI (`forgejo admin user generate-access-token`, `admin user create --access-token`) always makes an all-repos token (`ResourceAllRepos = true`), so a repo-limited token has to be minted over the API.
+Die CLI (`forgejo admin user generate-access-token`, `admin user create --access-token`) erzeugt immer einen Token für alle Repos (`ResourceAllRepos = true`), daher muss ein repo-beschränkter Token über die API erzeugt werden.
 
-## Capability table
+## Fähigkeitstabelle
 
-| Need | CLI (on host, in the container) | REST API | Privilege | Gaps |
+| Bedarf | CLI (auf dem Host, im Container) | REST-API | Rechte | Lücken |
 |---|---|---|---|---|
-| Create user | `forgejo admin user create --username U --email E (--password P \| --random-password) [--must-change-password=false] [--restricted] [--access-token --access-token-scopes S]` | `POST /admin/users` (`CreateUserOption`: username, email, password, must_change_password, restricted, visibility, full_name, send_notify…) | CLI: host/DB access. API: site admin + `write:admin` | No user-type field on either path, so no Bot user type (see below). CLI requires a password or `--random-password`. |
-| Edit user after creation | `admin user must-change-password`, `change-password` | `PATCH /admin/users/{u}` (`EditUserOption`: prohibit_login, restricted, max_repo_creation, allow_create_organization, visibility, admin, active, …) | site admin | Can harden a Bot account (e.g. `prohibit_login`, `max_repo_creation: 0`, `allow_create_organization: false`) but cannot change its type. |
-| Mint token for another user | `forgejo admin user generate-access-token -u U -t NAME --scopes S [--raw]` | `POST /admin/users/{u}/tokens` (admin, token auth OK) or `POST /users/{u}/tokens` (**requires basic auth** or reverse-proxy auth, self or admin) | CLI: host. Admin API: site admin + `write:admin` | CLI tokens are always all-repos. Token secret is returned once (`sha1` field). Names must be unique per user. |
-| Register SSH key on user | none | `POST /admin/users/{u}/keys` (`CreateKeyOption`: title, key, read_only) as admin, or `POST /user/keys` as the user itself | site admin, or the user with `write:user` | No CLI. `read_only` applies to deploy keys (`POST /repos/{o}/{r}/keys`), which are the per-repo alternative to a user key. |
-| Add collaborator | none | `PUT /repos/{o}/{r}/collaborators/{u}` body `{"permission":"read"\|"write"\|"admin"}` → 204 | repo admin (`reqAdmin()`) + `write:repository` | No CLI. Org repos can use teams instead. |
-| Create repo for a user | none | `POST /admin/users/{u}/repos` (`CreateRepoOption`) | site admin | none |
-| Create repo in an org | none | `POST /orgs/{org}/repos` | org member allowed to create repos (owner, or team with create-repo) | none |
-| Read Instance SSH host key | none | **none** | host filesystem, or network access to the SSH port | See the host key section. `GET /signing-key.ssh` is the commit-signing key, **not** the host key. |
+| Konto anlegen | `forgejo admin user create --username U --email E (--password P \| --random-password) [--must-change-password=false] [--restricted] [--access-token --access-token-scopes S]` | `POST /admin/users` (`CreateUserOption`: username, email, password, must_change_password, restricted, visibility, full_name, send_notify…) | CLI: Host-/DB-Zugriff. API: Site-Admin + `write:admin` | Auf keinem Weg ein Feld für den Kontotyp, also kein Bot-Kontotyp (siehe unten). Die CLI verlangt ein Passwort oder `--random-password`. |
+| Konto nach Anlage bearbeiten | `admin user must-change-password`, `change-password` | `PATCH /admin/users/{u}` (`EditUserOption`: prohibit_login, restricted, max_repo_creation, allow_create_organization, visibility, admin, active, …) | Site-Admin | Kann ein Bot-Konto härten (z. B. `prohibit_login`, `max_repo_creation: 0`, `allow_create_organization: false`), aber nicht seinen Typ ändern. |
+| Token für ein anderes Konto erzeugen | `forgejo admin user generate-access-token -u U -t NAME --scopes S [--raw]` | `POST /admin/users/{u}/tokens` (Admin, Token-Auth genügt) oder `POST /users/{u}/tokens` (**verlangt Basic Auth** oder Reverse-Proxy-Auth, selbst oder Admin) | CLI: Host. Admin-API: Site-Admin + `write:admin` | CLI-Tokens gelten immer für alle Repos. Das Token-Geheimnis wird einmalig zurückgegeben (Feld `sha1`). Namen müssen pro Konto eindeutig sein. |
+| SSH-Schlüssel am Konto hinterlegen | keine | `POST /admin/users/{u}/keys` (`CreateKeyOption`: title, key, read_only) als Admin, oder `POST /user/keys` als das Konto selbst | Site-Admin, oder das Konto mit `write:user` | Keine CLI. `read_only` gilt für Deploy-Keys (`POST /repos/{o}/{r}/keys`), die Repo-bezogene Alternative zu einem Kontoschlüssel. |
+| Mitarbeiter hinzufügen | keine | `PUT /repos/{o}/{r}/collaborators/{u}` Body `{"permission":"read"\|"write"\|"admin"}` → 204 | Repo-Admin (`reqAdmin()`) + `write:repository` | Keine CLI. Organisations-Repos können stattdessen Teams nutzen. |
+| Repo für ein Konto anlegen | keine | `POST /admin/users/{u}/repos` (`CreateRepoOption`) | Site-Admin | keine |
+| Repo in einer Organisation anlegen | keine | `POST /orgs/{org}/repos` | Organisationsmitglied mit Recht zur Repo-Anlage (Owner oder Team mit create-repo) | keine |
+| SSH-Host-Key der Instanz lesen | keine | **keine** | Dateisystem des Hosts oder Netzwerkzugang zum SSH-Port | Siehe Abschnitt zum Host-Key. `GET /signing-key.ssh` ist der Commit-Signaturschlüssel, **nicht** der Host-Key. |
 
-## Details and citations
+## Details und Belege
 
-### Users and the Bot account
+### Konten und das Bot-Konto
 
-- `POST /admin/users`: route `m.Post("", bind(api.CreateUserOption{}), admin.CreateUser)` inside the `/admin` group. That group is guarded by `tokenRequiresScopes(AccessTokenScopeCategoryAdmin), reqToken(), reqSiteAdmin()` [src `routers/api/v1/api.go` L1319–1415]. Body fields per [swagger `CreateUserOption`].
-- CLI flags per [src `cmd/admin_user_create.go`]: `--username`, `--email`, `--password` / `--random-password`, `--must-change-password` (defaults true, except for the very first user), `--restricted`, `--fullname`, `--admin`, `--access-token`, `--access-token-name`, `--access-token-scopes`. There is no user-type flag.
-- Forgejo does have a bot type in its model: `UserTypeBot // 4` and `IsBot()` [src `models/user/user.go` L63–74, L472]. But neither `CreateUserOption`/`EditUserOption` [swagger] nor the CLI can set it. **Gap:** the Bot account will be an ordinary individual user. You can make it bot-like with `PATCH /admin/users/{u}`: `prohibit_login: true` blocks web/password login (check separately that tokens and SSH keep working for a prohibit-login user), plus `max_repo_creation`, `allow_create_organization`, and `restricted: true`. With `restricted`, the user sees only repos/orgs it is explicitly granted, which suits a Bot account.
-- CLI subcommands under `forgejo admin user`: create, list, change-password, delete, generate-access-token, must-change-password, reset-mfa, plus an authorized-integration command [src `cmd/admin_user.go`]. There is no CLI for keys, collaborators or repos.
+- `POST /admin/users`: Route `m.Post("", bind(api.CreateUserOption{}), admin.CreateUser)` in der Gruppe `/admin`. Diese Gruppe ist durch `tokenRequiresScopes(AccessTokenScopeCategoryAdmin), reqToken(), reqSiteAdmin()` geschützt [src `routers/api/v1/api.go` Z. 1319–1415]. Body-Felder laut [swagger `CreateUserOption`].
+- CLI-Flags laut [src `cmd/admin_user_create.go`]: `--username`, `--email`, `--password` / `--random-password`, `--must-change-password` (Standard true, außer beim allerersten Konto), `--restricted`, `--fullname`, `--admin`, `--access-token`, `--access-token-name`, `--access-token-scopes`. Es gibt kein Flag für den Kontotyp.
+- Forgejo kennt im Modell einen Bot-Typ: `UserTypeBot // 4` und `IsBot()` [src `models/user/user.go` Z. 63–74, Z. 472]. Aber weder `CreateUserOption`/`EditUserOption` [swagger] noch die CLI können ihn setzen. **Lücke:** Das Bot-Konto wird ein gewöhnliches Einzelkonto. Man kann es mit `PATCH /admin/users/{u}` bot-ähnlich machen: `prohibit_login: true` sperrt Web-/Passwort-Login (gesondert prüfen, ob Tokens und SSH für ein solches Konto weiter funktionieren), dazu `max_repo_creation`, `allow_create_organization` und `restricted: true`. Mit `restricted` sieht das Konto nur Repos/Organisationen, die ihm ausdrücklich freigegeben wurden, was zu einem Bot-Konto passt.
+- CLI-Unterbefehle unter `forgejo admin user`: create, list, change-password, delete, generate-access-token, must-change-password, reset-mfa sowie ein Befehl für autorisierte Integrationen [src `cmd/admin_user.go`]. Es gibt keine CLI für Schlüssel, Mitarbeiter oder Repos.
 
-### Access tokens and scopes
+### Access-Tokens und Scopes
 
-Scopes in 16.0.5 [src `models/auth/access_token_scope.go` L55–85]:
+Scopes in 16.0.5 [src `models/auth/access_token_scope.go` Z. 55–85]:
 
 - `all`
-- `public-only` (modifier: limits the token to public orgs/repos)
-- `read:`/`write:` for each of `activitypub`, `admin`, `misc` (placeholder), `notification`, `organization`, `package`, `issue`, `repository`, `user`
+- `public-only` (Modifikator: beschränkt den Token auf öffentliche Organisationen/Repos)
+- `read:`/`write:` für jeweils `activitypub`, `admin`, `misc` (Platzhalter), `notification`, `organization`, `package`, `issue`, `repository`, `user`
 
-`write` implies `read`.
+`write` schließt `read` ein.
 
-- API routes:
-  - `/users/{username}/tokens` POST requires `reqBasicOrRevProxyAuth(), reqToken()` under `reqSelfOrAdmin()` [src `api.go` L593–597]. A token alone cannot mint a token here; it needs username+password basic auth.
-  - `/admin/users/{username}/tokens` GET/POST/DELETE sit in the admin group and accept token auth [src `api.go` L1342–1346]. **This is the non-interactive path**: an admin token can mint tokens for the Bot account without knowing the Bot's password.
-- Both routes share `utils.CreateAccessToken` [src `routers/api/v1/utils/access_token.go`]:
-  - rejects a duplicate name (400) and an empty scope (400).
-  - with `repositories` set: resolves each `{owner,name}`. Any repo the **doer** cannot see yields "does not exist" (400). It sets `ResourceAllRepos=false`, validates, and stores `AccessTokenResourceRepo` rows in the same transaction.
-  - without `repositories`, it sets `ResourceAllRepos=true`.
-- Validation [src `services/authz/access_token.go` L38–84]: a repo-specific token needs ≥1 repo, cannot include `public-only`, and may only include `read:issue`, `write:issue`, `read:repository` or `write:repository`. Anything else fails with `ErrSpecifiedReposInvalidScope`. The code comment explains why: `write:organization` etc. would escape per-repo checks.
-- Enforcement [src `services/authz/specific_repos_reducer.go`]:
-  - listed repo: access unchanged, i.e. capped by what the user already has.
-  - unlisted private repo, or repo of a non-public owner: `AccessModeNone`.
-  - unlisted public repo: capped at read.
-  - `AllowAdminOverride()` returns false, so admin rights do not bypass it.
+- API-Routen:
+  - `/users/{username}/tokens` POST verlangt `reqBasicOrRevProxyAuth(), reqToken()` unter `reqSelfOrAdmin()` [src `api.go` Z. 593–597]. Ein Token allein kann hier keinen Token erzeugen; nötig ist Basic Auth mit Benutzername und Passwort.
+  - `/admin/users/{username}/tokens` GET/POST/DELETE liegen in der Admin-Gruppe und akzeptieren Token-Auth [src `api.go` Z. 1342–1346]. **Das ist der nicht-interaktive Weg**: Ein Admin-Token kann Tokens für das Bot-Konto erzeugen, ohne dessen Passwort zu kennen.
+- Beide Routen nutzen `utils.CreateAccessToken` [src `routers/api/v1/utils/access_token.go`]:
+  - lehnt einen doppelten Namen (400) und einen leeren Scope (400) ab.
+  - mit gesetztem `repositories`: löst jedes `{owner,name}` auf. Jedes Repo, das der **Aufrufer** nicht sehen kann, ergibt „does not exist“ (400). Setzt `ResourceAllRepos=false`, validiert und speichert `AccessTokenResourceRepo`-Zeilen in derselben Transaktion.
+  - ohne `repositories` wird `ResourceAllRepos=true` gesetzt.
+- Validierung [src `services/authz/access_token.go` Z. 38–84]: Ein repo-spezifischer Token braucht ≥1 Repo, darf `public-only` nicht enthalten und nur `read:issue`, `write:issue`, `read:repository` oder `write:repository` tragen. Alles andere schlägt mit `ErrSpecifiedReposInvalidScope` fehl. Der Code-Kommentar erklärt den Grund: `write:organization` usw. würden die Repo-Prüfungen umgehen.
+- Durchsetzung [src `services/authz/specific_repos_reducer.go`]:
+  - aufgeführtes Repo: Zugriff unverändert, also begrenzt durch die bestehenden Rechte des Kontos.
+  - nicht aufgeführtes privates Repo oder Repo eines nicht-öffentlichen Eigentümers: `AccessModeNone`.
+  - nicht aufgeführtes öffentliches Repo: höchstens Lesen.
+  - `AllowAdminOverride()` gibt false zurück, Admin-Rechte umgehen die Beschränkung also nicht.
 
-  Consequence: a per-repo token for the Bot account still only reaches what the Bot itself can reach. You grant the Bot collaborator access and scope the token to the same repo(s).
-- CLI: `generate-access-token` and `create --access-token` hard-code `t.ResourceAllRepos = true` with the comment "maintain legacy behaviour until new CLI options are added" [src `cmd/admin_user_generate_access_token.go` L89–91, `cmd/admin_user_create.go` L213–215]. **Gap:** the CLI cannot make per-repo tokens.
-- The live instance matches the schema: `GET /users/dreamer/tokens` returns `scopes: ["all"]`, `repositories: null` for the existing tokens, and [swagger `AccessToken.repositories`] documents null as "not limited".
-- Bootstrap chicken-and-egg: the first admin token has to come from the CLI (`forgejo admin user generate-access-token -u <owner> --scopes write:admin,...`) or from the UI. After that, everything else can go over the API.
+  Folge: Ein repo-beschränkter Token des Bot-Kontos erreicht nur, was das Bot-Konto selbst erreicht. Man gibt dem Bot-Konto Mitarbeiterrechte und beschränkt den Token auf dasselbe Repo bzw. dieselben Repos.
+- CLI: `generate-access-token` und `create --access-token` setzen fest `t.ResourceAllRepos = true`, mit dem Kommentar „maintain legacy behaviour until new CLI options are added“ [src `cmd/admin_user_generate_access_token.go` Z. 89–91, `cmd/admin_user_create.go` Z. 213–215]. **Lücke:** Die CLI kann keine repo-beschränkten Tokens erzeugen.
+- Die laufende Instanz entspricht dem Schema: `GET /users/dreamer/tokens` liefert für die vorhandenen Tokens `scopes: ["all"]`, `repositories: null`, und [swagger `AccessToken.repositories`] dokumentiert null als „nicht beschränkt“.
+- Henne-Ei-Problem beim Bootstrap: Der erste Admin-Token muss über die CLI (`forgejo admin user generate-access-token -u <betreiber> --scopes write:admin,...`) oder die UI entstehen. Danach geht alles Weitere über die API.
 
-### SSH keys
+### SSH-Schlüssel
 
-- `POST /admin/users/{username}/keys` → `admin.CreatePublicKey` [src `api.go` L1331–1334, `routers/api/v1/admin/user.go` L329]. Body `CreateKeyOption{title, key, read_only}` [swagger]. Admin group guards apply.
-- Alternatively the Bot's own token with `write:user` can call `POST /user/keys`.
-- Per-repo alternative: deploy keys, `POST /repos/{o}/{r}/keys` with `read_only`. These give SSH access to one repo only, but they belong to the repo, not a user, so pushes are not attributed to the Bot account.
-- If the Instance uses OpenSSH with an `authorized_keys` file, Forgejo rewrites it itself when keys are added. `forgejo admin regenerate keys` exists for resync [src `cmd/admin.go` L45–50].
+- `POST /admin/users/{username}/keys` → `admin.CreatePublicKey` [src `api.go` Z. 1331–1334, `routers/api/v1/admin/user.go` Z. 329]. Body `CreateKeyOption{title, key, read_only}` [swagger]. Es gelten die Schutzbedingungen der Admin-Gruppe.
+- Alternativ kann der eigene Token des Bot-Kontos mit `write:user` `POST /user/keys` aufrufen.
+- Repo-bezogene Alternative: Deploy-Keys, `POST /repos/{o}/{r}/keys` mit `read_only`. Sie gewähren SSH-Zugriff auf genau ein Repo, gehören aber dem Repo und keinem Konto, sodass Pushes nicht dem Bot-Konto zugeordnet werden.
+- Nutzt die Instanz OpenSSH mit einer `authorized_keys`-Datei, schreibt Forgejo diese beim Hinzufügen von Schlüsseln selbst neu. `forgejo admin regenerate keys` existiert zur Neusynchronisation [src `cmd/admin.go` Z. 45–50].
 
-### Collaborators
+### Mitarbeiter
 
-- `PUT /repos/{owner}/{repo}/collaborators/{collaborator}` with `reqToken()` + `reqAdmin()` (repo admin, which site admins satisfy) [src `api.go` L816–824]. Body `AddCollaboratorOption{permission: read|write|admin}` [swagger]. Returns 204.
-- `GET .../collaborators/{u}/permission` is useful for idempotent checks.
+- `PUT /repos/{owner}/{repo}/collaborators/{collaborator}` mit `reqToken()` + `reqAdmin()` (Repo-Admin, was Site-Admins erfüllen) [src `api.go` Z. 816–824]. Body `AddCollaboratorOption{permission: read|write|admin}` [swagger]. Liefert 204.
+- `GET .../collaborators/{u}/permission` eignet sich für idempotente Prüfungen.
 
-### Repositories on behalf of a user/org
+### Repositories im Namen eines Kontos/einer Organisation
 
-- `POST /admin/users/{username}/repos` → `repo.CreateUserRepo(ctx, ctx.User(), form)`, owned by the path user [src `routers/api/v1/admin/repo.go`].
-- `POST /orgs/{org}/repos` (and the legacy alias `POST /org/{org}/repos`) for org-owned repos [swagger].
-- `POST /admin/users/{username}/orgs` creates an org owned by a user [swagger].
+- `POST /admin/users/{username}/repos` → `repo.CreateUserRepo(ctx, ctx.User(), form)`, Eigentümer ist das Konto aus dem Pfad [src `routers/api/v1/admin/repo.go`].
+- `POST /orgs/{org}/repos` (und der Legacy-Alias `POST /org/{org}/repos`) für Organisations-Repos [swagger].
+- `POST /admin/users/{username}/orgs` legt eine Organisation mit einem Konto als Eigentümer an [swagger].
 
-### Instance SSH host key
+### SSH-Host-Key der Instanz
 
-- No REST endpoint exposes it. The swagger lists only `/signing-key.gpg`, `/signing-key.ssh` and the per-repo `signing-key.gpg`; those are for commit signing.
-- The source of truth depends on which SSH server the Instance runs:
-  - **Built-in Go SSH server** (`START_SSH_SERVER=true`): keys come from `[server] SSH_SERVER_HOST_KEYS`. The default is `ssh/gitea.rsa, ssh/gogs.rsa`, resolved relative to `APP_DATA_PATH` [src `modules/setting/ssh.go` L65, L132–136].
-  - **OpenSSH** (the default in the official rootful Docker image, which runs sshd under s6): standard `ssh_host_*_key.pub` files. In the Docker image these are generated under `/data/ssh/`. This comes from the image's s6 openssh setup and was not verified against this Instance's container.
-- Live probe: the repo's `ssh_url` is `ssh://git@localhost:2222/...`, and `ssh-keyscan -p 2222 localhost` returns ed25519, rsa and ecdsa-sha2-nistp256 host keys. The built-in server's default is a single RSA key (`gitea.rsa`), so three standard types points to OpenSSH in the container on port 2222.
-- Non-interactive options on the host, in order of trust:
-  1. read the `.pub` file(s) from the data volume.
-  2. `ssh-keyscan -p <SSH_PORT> localhost` run **on the host itself**. Fetched over loopback, this is not a network TOFU risk.
+- Kein REST-Endpunkt liefert ihn. Die Swagger-Spezifikation enthält nur `/signing-key.gpg`, `/signing-key.ssh` und das repo-bezogene `signing-key.gpg`; diese dienen der Commit-Signierung.
+- Die maßgebliche Quelle hängt vom SSH-Server der Instanz ab:
+  - **Eingebauter Go-SSH-Server** (`START_SSH_SERVER=true`): Schlüssel aus `[server] SSH_SERVER_HOST_KEYS`. Standard ist `ssh/gitea.rsa, ssh/gogs.rsa`, relativ zu `APP_DATA_PATH` [src `modules/setting/ssh.go` Z. 65, Z. 132–136].
+  - **OpenSSH** (Standard im offiziellen rootful-Docker-Image, das sshd unter s6 betreibt): die üblichen `ssh_host_*_key.pub`-Dateien. Im Docker-Image werden sie unter `/data/ssh/` erzeugt. Das stammt aus dem s6-OpenSSH-Setup des Images und wurde nicht am Container dieser Instanz verifiziert.
+- Live-Abfrage: `ssh_url` des Repos ist `ssh://git@localhost:2222/...`, und `ssh-keyscan -p 2222 localhost` liefert ed25519-, rsa- und ecdsa-sha2-nistp256-Host-Keys. Der eingebaute Server nutzt standardmäßig einen einzelnen RSA-Schlüssel (`gitea.rsa`); drei Standardtypen sprechen also für OpenSSH im Container auf Port 2222.
+- Nicht-interaktive Möglichkeiten auf dem Host, nach Vertrauenswürdigkeit geordnet:
+  1. die `.pub`-Datei(en) vom Datenvolume lesen.
+  2. `ssh-keyscan -p <SSH_PORT> localhost` **auf dem Host selbst** ausführen. Über Loopback abgerufen ist das kein Netzwerk-TOFU-Risiko.
 
-  Then publish the result to Claude clients for host key pinning. Tell clients the Instance's `SSH_DOMAIN`/`SSH_PORT`; the repo's `ssh_url` in `GET /repos/{o}/{r}` shows what clients will dial.
-- **Gap:** a remote Claude client cannot fetch the host key authenticated from the forge. The installer on the host has to carry it across, or the owner can publish it somewhere the client already trusts, e.g. as a file in a repo fetched over HTTPS with a token.
+  Das Ergebnis dann an Claude-Clients für Host-Key-Pinning weitergeben. Den Clients `SSH_DOMAIN`/`SSH_PORT` der Instanz mitteilen; `ssh_url` des Repos in `GET /repos/{o}/{r}` zeigt, was Clients ansteuern werden.
+- **Lücke:** Ein entfernter Claude-Client kann den Host-Key nicht authentifiziert von der Forge abrufen. Der Installer auf dem Host muss ihn übertragen, oder der Betreiber veröffentlicht ihn an einer Stelle, der der Client bereits vertraut, z. B. als Datei in einem Repo, das per HTTPS mit Token abgerufen wird.
 
-## Gaps summary
+## Zusammenfassung der Lücken
 
-1. There is no Bot user type via CLI/API. Use a regular user, harden it with `PATCH /admin/users/{u}` (`restricted`, `max_repo_creation`, `allow_create_organization`, possibly `prohibit_login`), and put "Bot" in the full name.
-2. The CLI cannot create repo-specific tokens. Use `POST /admin/users/{bot}/tokens` with `repositories`.
-3. Repo-specific tokens are limited to `repository` + `issue` scopes and still allow read of public repos.
-4. `POST /users/{u}/tokens` needs basic auth. The admin variant does not.
-5. There is no CLI for keys, collaborators or repos. That is API only, needing a site-admin token, which itself comes from the CLI once.
-6. There is no API for the SSH host key. Read it from disk or `ssh-keyscan` on the host.
+1. Kein Bot-Kontotyp per CLI/API. Ein normales Konto verwenden, mit `PATCH /admin/users/{u}` härten (`restricted`, `max_repo_creation`, `allow_create_organization`, ggf. `prohibit_login`) und „Bot“ in den vollen Namen schreiben.
+2. Die CLI kann keine repo-beschränkten Tokens erzeugen. `POST /admin/users/{bot}/tokens` mit `repositories` verwenden.
+3. Repo-beschränkte Tokens sind auf `repository`- + `issue`-Scopes begrenzt und erlauben weiterhin Lesen öffentlicher Repos.
+4. `POST /users/{u}/tokens` verlangt Basic Auth. Die Admin-Variante nicht.
+5. Keine CLI für Schlüssel, Mitarbeiter oder Repos. Das geht nur über die API und erfordert einen Site-Admin-Token, der seinerseits einmalig über die CLI entsteht.
+6. Keine API für den SSH-Host-Key. Von der Platte lesen oder `ssh-keyscan` auf dem Host.
