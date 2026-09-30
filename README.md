@@ -52,6 +52,8 @@ In Claude Code genügt eine Aufforderung in eigenen Worten, zum Beispiel „Rich
 | `/igit löschen` bzw. `/igit delete` | Löscht ein Repository nach ausdrücklicher Bestätigung endgültig, auf Wunsch samt verbundenem lokalem Verzeichnis. Das Verzeichnis wird nur gelöscht, wenn es auf dieses Repository zeigt und keine ungesicherten Änderungen oder ungepushten Commits enthält. |
 | `/igit widerrufen` bzw. `/igit revoke` | Entzieht einem einzelnen Claude-Client den Zugriff, indem Token und SSH-Schlüssel gelöscht werden. Andere Clients bleiben unberührt. |
 
+Am Ende von `einrichten` und `repo` empfiehlt der Skill die [Skills von Matt Pocock](https://github.com/mattpocock/skills), bietet an, sie als Plugin zu installieren, und fragt, ob ein Vorhaben mit `/wayfinder` geplant werden soll.
+
 Nach `einrichten` muss Claude Code einmal neu gestartet werden, damit der MCP-Server verfügbar ist. Alle Unterbefehle lassen sich gefahrlos wiederholen; sie legen nur an, was fehlt.
 
 Das Skript lässt sich auch direkt aufrufen, etwa zur Fehlersuche. `python3 skill/igit/igit.py --help` listet die Unterbefehle; jeder gibt ein JSON-Objekt aus.

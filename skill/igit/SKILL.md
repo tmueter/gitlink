@@ -31,17 +31,29 @@ Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. D
 3. **Einrichten:** `einrichten --url <url>`. Läuft die Instanz auf einem anderen Rechner, zusätzlich `--ssh-host <host>`; die URL ist dann die Adresse, unter der Forgejo auf diesem Rechner erreichbar ist (meist `http://localhost:3000`).
 4. **Abgleich:** Enthält `result.missing_repos` Einträge, zeige die Liste und frage, welche Repos Claude nutzen darf. Für die gewählten: `freigeben <eigentümer/repo> …`.
 5. **Abschluss:** fasse zusammen (Instanz, Bot-Konto, SSH-Alias, MCP-Server) und sage, dass der MCP-Server erst nach einem Neustart von Claude Code verfügbar ist.
+6. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
 
-Fertig ist der Unterbefehl, wenn `einrichten` mit `"ok": true` zurückkam, jede Warnung weitergegeben und über jedes Repo aus `missing_repos` entschieden ist.
+Fertig ist der Unterbefehl, wenn `einrichten` mit `"ok": true` zurückkam, jede Warnung weitergegeben, über jedes Repo aus `missing_repos` entschieden und die Empfehlung beantwortet ist.
 
 ## Unterbefehl: repo
 
 1. `orgs` aufrufen. Hat der Betreiber Organisationen, frage, ob das Repo unter seinem Konto oder einer Organisation liegen soll.
 2. Frage **immer** nach Name und Sichtbarkeit (privat oder öffentlich).
 3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <arbeitsverzeichnis>`. Bei `repo_exists` frage, ob das bestehende Repo eingerichtet werden soll; wenn ja, mit `--existing-ok` wiederholen.
-4. Gib zum Schluss `result.board_instruction` an den Betreiber weiter: Das Projektboard legt er selbst an, weil Forgejo dafür keine API hat.
+4. Gib `result.board_instruction` an den Betreiber weiter: Das Projektboard legt er selbst an, weil Forgejo dafür keine API hat.
+5. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
 
 Ab jetzt ordnest du jedes Issue, das du in diesem Repo anlegst, dem Meilenstein aus `result.milestone_id` zu. Das Skript hat dazu einen Hinweis in die `CLAUDE.md` des Arbeitsverzeichnisses geschrieben.
+
+## Matt-Pocock-Skills empfehlen
+
+Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in dieser Sitzung schon beantwortet, entfällt er.
+
+1. Prüfe mit `claude plugin list`, ob `mattpocock-skills` installiert ist.
+2. **Nicht installiert:** Empfiehl die Skills von Matt Pocock (https://github.com/mattpocock/skills) für die Planung und Umsetzung im neuen Repo, besonders `/wayfinder`, das eine grobe Idee in Entscheidungs-Tickets zerlegt. Frage, ob du sie installieren sollst. Bei Ja: `claude plugins install mattpocock-skills`, danach sage, dass die Skills nach einem Neustart von Claude Code verfügbar sind und `/mattpocock-skills:setup-matt-pocock-skills` sie einmalig für das Repo einrichtet.
+3. Sind die Skills installiert, schon vorher oder gerade eben, frage, ob der Betreiber mit `/wayfinder` ein Vorhaben planen will, und wenn ja, welche Idee.
+   - Skills waren schon installiert: rufe den Skill `mattpocock-skills:wayfinder` mit der Idee auf.
+   - Skills wurden gerade erst installiert: nenne den Aufruf für nach dem Neustart, `/mattpocock-skills:wayfinder <idee>`.
 
 ## Unterbefehl: archivieren / archive
 
