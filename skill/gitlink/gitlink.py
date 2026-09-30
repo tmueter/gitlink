@@ -196,6 +196,10 @@ MSG = {
         "de": "Der Token dieses Clients läuft am {date} ab (GitLab-Ablaufpflicht). Danach `einrichten` erneut ausführen.",
         "en": "This client's token expires on {date} (GitLab expiry policy). Run `setup` again afterwards.",
     },
+    "w_hostkey_tofu": {
+        "de": "Host-Keys von {host}:{port} direkt über das Netz abgefragt und beim ersten Kontakt vertraut (TOFU). Vergleiche die Fingerprints mit {url}; ohne Zugang zum Host der Instanz (`--ssh-host`) geht es nicht sicherer.",
+        "en": "Host keys of {host}:{port} fetched directly over the network and trusted on first use (TOFU). Compare the fingerprints with {url}; without access to the instance host (`--ssh-host`) it cannot be done more safely.",
+    },
     "w_gitlab_marked": {
         "de": "GitLab hat das Projekt nur zum Löschen markiert; das endgültige Löschen wurde abgelehnt: {body}",
         "en": "GitLab only marked the project for deletion; permanent removal was refused: {body}",
@@ -585,6 +589,15 @@ def keyscan(host, hostname, port):
     return [" ".join(line.split()[1:3]) for line in out.splitlines() if line and not line.startswith("#")]
 
 
+def parse_ssh_url(ssh_url, default_host):
+    """(host, port) aus `ssh://git@host:port/pfad.git` oder `git@host:pfad.git`."""
+    m = re.match(r"ssh://[^@]+@([^:/]+)(?::(\d+))?/", ssh_url)
+    if m:
+        return m.group(1), int(m.group(2) or 22)
+    m = re.match(r"[^@]+@([^:]+):", ssh_url)
+    return (m.group(1), 22) if m else (default_host, None)
+
+
 def parse_ini(text):
     section, out = "", {}
     for line in text.splitlines():
@@ -786,7 +799,8 @@ class GiteaFamily:
             (ini.get(("server", "SSH_DOMAIN")) or urllib.parse.urlparse(url).hostname)
         return hostname, port
 
-    def host_keys(self, ssh_port):
+    def host_keys(self, ssh_hostname, ssh_port):
+        # Admin-Zugang läuft immer auf dem Host der Instanz; dort liegen die Keys, Scan nur über Loopback.
         keys = []
         for typ in HOSTKEY_TYPES:
             txt = self.read_file(f"/data/ssh/ssh_host_{typ}_key.pub")
@@ -980,17 +994,23 @@ class GitLab:
         return {}, []
 
     def ssh_endpoint(self, ini, url):
-        hostname = ssh_resolved(self.cfg["ssh_host"]) if self.cfg.get("ssh_host") else urllib.parse.urlparse(url).hostname
-        port = self.cfg.get("ssh_port")
-        if not port:
-            for p in self.api.call("GET", "/projects?per_page=1")[1] or []:
-                m = re.match(r"ssh://[^@]+@[^:/]+:(\d+)/", p.get("ssh_url_to_repo", ""))
-                port = int(m.group(1)) if m else 22
-        return hostname, port or 22
+        """SSH-Ziel aus `ssh_url_to_repo` eines Projekts; sonst Web-Host und Port 22 bzw. `--ssh-port`."""
+        hostname, port = urllib.parse.urlparse(url).hostname, None
+        for p in self.api.call("GET", "/projects?per_page=1")[1] or []:
+            hostname, port = parse_ssh_url(p.get("ssh_url_to_repo", ""), hostname)
+        if self.cfg.get("ssh_host"):
+            hostname = ssh_resolved(self.cfg["ssh_host"])
+        return hostname, self.cfg.get("ssh_port") or port or 22
 
-    def host_keys(self, ssh_port):
-        # Kein API-Endpunkt; Scan über Loopback bzw. auf dem Host (per SSH), nie über das offene Netz.
-        return keyscan(self.host, "localhost", ssh_port)
+    def host_keys(self, ssh_hostname, ssh_port):
+        # Kein API-Endpunkt. Mit `--ssh-host` scannt der Host der Instanz sich selbst über Loopback.
+        if self.cfg.get("ssh_host"):
+            return keyscan(self.host, "localhost", ssh_port)
+        # Sonst direkt beim SSH-Ziel; über das Netz ist das Vertrauen beim ersten Kontakt (TOFU).
+        if not is_loopback(ssh_hostname):
+            self.warnings.append(t("w_hostkey_tofu", host=ssh_hostname, port=ssh_port,
+                                   url=f"{self.cfg['url']}/help/instance_configuration#ssh-host-keys-fingerprints"))
+        return keyscan(Host(), ssh_hostname, ssh_port)
 
     def bot_id(self):
         users = self.api.call("GET", f"/users?username={BOT}")[1] or []
@@ -1371,7 +1391,7 @@ def cmd_setup(args):
         ssh_hostname, ssh_port = a.ssh_endpoint(ini, url)
         a.ensure_bot()
         keyfile = ensure_client_key(a, inst, client)
-        keys = a.host_keys(ssh_port)
+        keys = a.host_keys(ssh_hostname, ssh_port)
         update_known_hosts(inst, keys)
         update_ssh_config(inst, ssh_hostname, ssh_port, keyfile)
         cfg.update({"ssh_alias": alias(inst), "ssh_hostname": ssh_hostname, "ssh_port": ssh_port})

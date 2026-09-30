@@ -183,7 +183,7 @@ Die Entscheidungen stammen aus der zweiten Map „Wayfinder: Skill für Forgejo 
   - Der Betreiber legt einmal einen Admin-Token (Scope `api`) in `admin-token` ab, im eigenen Terminal, nie im Chat. Der Token wird gespeichert, weil GitLab keinen CLI-Weg zum Neuerzeugen bietet; das ist eine bewusste Ausnahme von „Admin-Rechte nur während eines Laufs“.
   - Bot ist ein Instanz-Service-Account (`POST /service_accounts`), eingetragen mit Rolle **Maintainer**, weil der Standard-Branchschutz Entwicklern keinen Push auf den Standard-Branch erlaubt.
   - Schlüssel über `/users/:id/keys`, Token pro Client über `/users/:id/personal_access_tokens` (Scope `api`); läuft er nach GitLab-Regeln ab, meldet der Skill das Datum.
-  - Host-Key per `ssh-keyscan` über Loopback bzw. auf dem Host (per SSH), weil es keinen API-Endpunkt gibt.
+  - Host-Key: Es gibt keinen API-Endpunkt. Das SSH-Ziel (Host und Port) liest der Skill aus `ssh_url_to_repo` eines Projekts. Mit `--ssh-host` scannt der Host der Instanz sich selbst über Loopback; ohne Zugang zum Host fragt der Skill die Keys direkt beim SSH-Ziel ab und warnt, dass er ihnen beim ersten Kontakt vertraut (TOFU), mit Verweis auf die Fingerprint-Seite der Instanz.
   - Löschen ist zweistufig (markieren, dann `permanently_remove`); lehnt die Instanz das ab, meldet der Skill es.
   - MCP-Server **`@zereight/mcp-gitlab`** in fester Version per `npx`; setzt Node.js ≥ 18.17 voraus, sonst Warnung und kein MCP-Server.
   - **[Unsicher]** Nicht gegen eine echte GitLab-Instanz getestet, nur gegen einen nachgebauten API-Server.

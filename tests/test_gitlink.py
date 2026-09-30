@@ -453,6 +453,35 @@ class GitLabAdapter(SandboxHome):
         token = (gitlink.inst_dir("gl") / "token").read_text().strip()
         self.assertTrue(token.startswith("tok-"))
 
+    def test_host_keys_scan_the_real_ssh_target(self):
+        scanned = []
+        gitlink.keyscan = lambda host, name, port: scanned.append((host.ssh_host, name, port)) or ["ssh-ed25519 K"]
+        self.store_admin_token()
+        with gitlink.adapter(dict(self.cfg)) as a:
+            self.assertEqual(a.host_keys("gitlab.example.org", 22), ["ssh-ed25519 K"])
+            self.assertEqual(len(a.warnings), 1)  # über das Netz: TOFU-Warnung
+            self.assertIn("gitlab.example.org:22", a.warnings[0])
+            a.host_keys("127.0.0.1", 2224)
+            self.assertEqual(len(a.warnings), 1)  # Loopback: keine Warnung
+        a = gitlink.adapter(dict(self.cfg, ssh_host="admin@forge"))
+        a.host_keys("forge.example.org", 22)
+        self.assertEqual(scanned, [(None, "gitlab.example.org", 22), (None, "127.0.0.1", 2224),
+                                   ("admin@forge", "localhost", 22)])
+        self.assertEqual(a.warnings, [])
+
+    def test_ssh_endpoint_from_project_ssh_url(self):
+        self.assertEqual(gitlink.parse_ssh_url("ssh://git@git.example.org:2224/g/p.git", "web"), ("git.example.org", 2224))
+        self.assertEqual(gitlink.parse_ssh_url("ssh://git@git.example.org/g/p.git", "web"), ("git.example.org", 22))
+        self.assertEqual(gitlink.parse_ssh_url("git@git.example.org:g/p.git", "web"), ("git.example.org", 22))
+        self.assertEqual(gitlink.parse_ssh_url("", "web"), ("web", None))
+        self.store_admin_token()
+        cfg = dict(self.cfg)
+        del cfg["ssh_port"]
+        with gitlink.adapter(cfg) as a:
+            self.assertEqual(a.ssh_endpoint({}, self.srv.url), ("127.0.0.1", 22))  # noch kein Projekt
+            a.create_repo("root", "p", True)
+            self.assertEqual(a.ssh_endpoint({}, self.srv.url), ("gitlab", 2224))
+
     def test_dependency_via_bot_token(self):
         self.store_admin_token()
         cfg = dict(self.cfg)
