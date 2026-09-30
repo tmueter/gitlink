@@ -7,7 +7,8 @@ Jeder Unterbefehl gibt genau ein JSON-Objekt auf stdout aus:
 Fortschrittsmeldungen gehen nach stderr. Geheimnisse erscheinen nie in der Ausgabe.
 
 Aufbau: gemeinsamer Kern (Dateien, SSH, MCP-Registrierung, Migration, CLI) und je Plattform ein
-Adapter. Forgejo und Gitea teilen sich `GiteaFamily`; GitLab hat einen eigenen Adapter.
+Adapter. Forgejo und Gitea teilen sich `GiteaFamily`. GitLab läuft ohne Token und ohne Bot: nur das Konto
+des Betreibers per SSH (`setup_gitlab`, `cmd_connect`).
 
 Spezifikation: docs/spec-gitlink-skill.md
 """
@@ -45,8 +46,6 @@ CLIENT_TOKEN_PREFIX = f"{NAME}-"
 LEGACY_PREFIXES = (f"{LEGACY}-lauf-", f"{LEGACY}-")
 FORGEJO_IMAGE = "codeberg.org/forgejo/forgejo:16"
 HOSTKEY_TYPES = ("ed25519", "ecdsa", "rsa")
-GITLAB_MCP_PACKAGE = "@zereight/mcp-gitlab@2.1.67"
-GITLAB_MAINTAINER = 40
 MD_BEGIN, MD_END = f"<!-- {NAME}:begin -->", f"<!-- {NAME}:end -->"
 LEGACY_MD = (f"<!-- {LEGACY}:begin -->", f"<!-- {LEGACY}:end -->")
 
@@ -90,17 +89,9 @@ MSG = {
         "de": "Kein Admin-Zugang zur Instanz gefunden: kein passender {platform}-Container. Mit `--container` oder `--admin-exec` angeben.",
         "en": "No admin access to the instance found: no matching {platform} container. Specify `--container` or `--admin-exec`.",
     },
-    "admin_token_required": {
-        "de": "Für GitLab wird ein Admin-Token gebraucht. 1. In GitLab anlegen: {create_url} (Scope `api`; ist Admin Mode aktiv, zusätzlich `admin_mode`). 2. Im eigenen Terminal ablegen, nie im Chat: `read -rs T && printf %s \"$T\" > {path} && chmod 600 {path}`. 3. Danach `einrichten` erneut ausführen.",
-        "en": "GitLab needs an admin token. 1. Create it in GitLab: {create_url} (scope `api`; add `admin_mode` if Admin Mode is on). 2. Store it from your own terminal, never in chat: `read -rs T && printf %s \"$T\" > {path} && chmod 600 {path}`. 3. Then run `setup` again.",
-    },
     "auth_proxy": {
         "de": "{url} leitet auf {host} um: Vor der Instanz steht ein Anmelde-Proxy (z. B. Microsoft Entra Application Proxy). Programme kommen ohne Anmeldung im Browser nicht durch, auch nicht mit Token. Nötig ist ein Zugang ohne Proxy (VPN, Sprungrechner per `--ssh-host`) oder eine Ausnahme für `/api/v4` am Proxy.",
         "en": "{url} redirects to {host}: an authentication proxy (e.g. Microsoft Entra Application Proxy) sits in front of the instance. Programs cannot pass without a browser login, not even with a token. Needed: access without the proxy (VPN, jump host via `--ssh-host`) or an exception for `/api/v4` at the proxy.",
-    },
-    "admin_token_invalid": {
-        "de": "Der GitLab-Token in {path} ist ungültig, abgelaufen oder gehört keinem Administrator. Neuen Token dort ablegen.",
-        "en": "The GitLab token in {path} is invalid, expired or not an administrator's. Store a new token there.",
     },
     "operator_ambiguous": {
         "de": "Mehrere Admin-Konten gefunden: {admins}. Mit `--operator` wählen.",
@@ -158,10 +149,6 @@ MSG = {
         "de": "{server} konnte nicht installiert werden: {err}",
         "en": "{server} could not be installed: {err}",
     },
-    "deps_unsupported": {
-        "de": "Diese GitLab-Instanz erlaubt keine blockierenden Issue-Links (laut Doku nur Premium/Ultimate): {body}",
-        "en": "This GitLab instance does not allow blocking issue links (Premium/Ultimate only per docs): {body}",
-    },
     "w_local_kept": {
         "de": "Das Verzeichnis {dir} wurde nicht gelöscht: {reasons}.",
         "en": "The directory {dir} was not deleted: {reasons}.",
@@ -194,21 +181,9 @@ MSG = {
         "de": "Der MCP-Server `{server}` steht erst nach einem Neustart von Claude Code zur Verfügung.",
         "en": "The MCP server `{server}` is only available after restarting Claude Code.",
     },
-    "w_no_node": {
-        "de": "Kein MCP-Server für GitLab eingerichtet: {pkg} braucht Node.js ≥ 18.17 (gefunden: {found}). Alles andere ist eingerichtet.",
-        "en": "No MCP server set up for GitLab: {pkg} needs Node.js ≥ 18.17 (found: {found}). Everything else is set up.",
-    },
-    "w_token_expires": {
-        "de": "Der Token dieses Clients läuft am {date} ab (GitLab-Ablaufpflicht). Danach `einrichten` erneut ausführen.",
-        "en": "This client's token expires on {date} (GitLab expiry policy). Run `setup` again afterwards.",
-    },
     "w_hostkey_tofu": {
         "de": "Host-Keys von {host}:{port} direkt über das Netz abgefragt und beim ersten Kontakt vertraut (TOFU). Vergleiche die Fingerprints mit {url}; ohne Zugang zum Host der Instanz (`--ssh-host`) geht es nicht sicherer.",
         "en": "Host keys of {host}:{port} fetched directly over the network and trusted on first use (TOFU). Compare the fingerprints with {url}; without access to the instance host (`--ssh-host`) it cannot be done more safely.",
-    },
-    "w_gitlab_marked": {
-        "de": "GitLab hat das Projekt nur zum Löschen markiert; das endgültige Löschen wurde abgelehnt: {body}",
-        "en": "GitLab only marked the project for deletion; permanent removal was refused: {body}",
     },
     "w_migrated": {
         "de": "Einrichtung von `{old}` auf `{new}` umgestellt ({inst}): Konfiguration, Schlüssel, SSH-Alias, known_hosts und MCP-Server.",
@@ -217,6 +192,34 @@ MSG = {
     "w_migrate_remotes": {
         "de": "Andere Verzeichnisse mit `origin` auf `{old}:…` von Hand umstellen: `git remote set-url origin {new}:<eigentümer>/<repo>.git`.",
         "en": "Update other directories whose `origin` uses `{old}:…` by hand: `git remote set-url origin {new}:<owner>/<repo>.git`.",
+    },
+    "ssh_key_required": {
+        "de": "Trage den öffentlichen Schlüssel dieses Clients in deinem GitLab-Konto ein: {url} (Titel `{title}`). Danach `einrichten` erneut ausführen.",
+        "en": "Add this client's public key to your GitLab account: {url} (title `{title}`). Then run `setup` again.",
+    },
+    "ssh_unreachable": {
+        "de": "SSH auf {host}:{port} ist nicht erreichbar ({err}). Ist der Name intern auflösbar? Sonst die interne Adresse mit `--ssh-hostname` angeben.",
+        "en": "SSH on {host}:{port} is not reachable ({err}). Does the name resolve internally? Otherwise give the internal address with `--ssh-hostname`.",
+    },
+    "gitlab_unsupported": {
+        "de": "Bei GitLab verbindet der Skill nur dein Konto per SSH mit Repos, die du selbst angelegt hast (`verbinden`). Repos anlegen, freigeben, archivieren, löschen und Abhängigkeiten gibt es dort nicht.",
+        "en": "For GitLab the skill only connects your account via SSH to repositories you created yourself (`connect`). Creating, granting, archiving, deleting and dependencies are not available there.",
+    },
+    "repo_no_access": {
+        "de": "Kein Zugriff auf {remote}: Gibt es das Repository, und hat dein Konto Zugriff? ({err})",
+        "en": "No access to {remote}: does the repository exist and does your account have access? ({err})",
+    },
+    "w_gitlab_revoke": {
+        "de": "Entferne den Schlüssel `{title}` auch in GitLab: {url}",
+        "en": "Also remove the key `{title}` in GitLab: {url}",
+    },
+    "gitlab_md": {
+        "de": "Dieses Verzeichnis ist mit dem GitLab-Repository `{repo}` auf `{inst}` verbunden (Konto @{account}, SSH-Alias `{alias}`). Claude leistet hier nur Hilfestellung: `git commit` und `git push` nur auf ausdrückliche Anforderung des Betreibers; keine Änderungen auf GitLab selbst (Issues, Merge Requests, Einstellungen).",
+        "en": "This directory is connected to the GitLab repository `{repo}` on `{inst}` (account @{account}, SSH alias `{alias}`). Claude only assists here: `git commit` and `git push` only when the operator explicitly asks; no changes on GitLab itself (issues, merge requests, settings).",
+    },
+    "connect_md": {
+        "de": "Dieses Verzeichnis ist mit dem {platform}-Repository `{repo}` auf `{inst}` verbunden (SSH-Alias `{alias}`, MCP-Server `{server}`).",
+        "en": "This directory is connected to the {platform} repository `{repo}` on `{inst}` (SSH alias `{alias}`, MCP server `{server}`).",
     },
     "board_hint": {
         "de": "Lege ein Projektboard an ({url}) und übernimm die Issues des Meilensteins „{milestone}“.",
@@ -975,200 +978,69 @@ class Gitea(GiteaFamily):
         return body, [note] if note else []
 
 
-# --------------------------------------------------------------------------- Adapter: GitLab
+# --------------------------------------------------------------------------- GitLab: nur Konto per SSH
 
-def enc(full):
-    return urllib.parse.quote(full, safe="")
-
-
-class GitLab:
-    """Selbst gehostetes GitLab mit einem vom Betreiber gelieferten Admin-Token (gespeichert, 0600)."""
-
-    name, label = "gitlab", "GitLab"
-    api_prefix = "/api/v4"
-
-    def __init__(self, cfg, operator=None):
-        self.cfg = cfg
-        self.host = Host(cfg.get("ssh_host"))
-        self.warnings = []
-        self.api = None
-        self._tunnel = None
-        self.operator = operator or cfg.get("operator")
-        self.token_file = inst_dir(cfg["instance"]) / "admin-token"
-
-    def __enter__(self):
-        if not self.token_file.exists():
-            create = f"{self.cfg['url']}/-/user_settings/personal_access_tokens?name={NAME}-admin&scopes=api"
-            raise Fail("admin_token_required", {"path": str(self.token_file), "create_url": create},
-                       path=str(self.token_file), create_url=create)
-        try:
-            if self.cfg.get("ssh_host"):
-                self._tunnel = Tunnel(self.cfg["ssh_host"], self.cfg["web_port"])
-                self.base = self._tunnel.__enter__()
-            else:
-                self.base = self.cfg["url"]
-            self.api = Api(self.base, ("private", self.token_file.read_text().strip()), self.api_prefix)
-            status, me = self.api.call("GET", "/user", soft=(401, 403))
-            if status != 200 or not me.get("is_admin"):
-                raise Fail("admin_token_invalid", {"path": str(self.token_file)}, path=str(self.token_file))
-            self.operator = me["username"]
-        except BaseException:
-            self.__exit__()
-            raise
-        return self
-
-    def __exit__(self, *exc):
-        if self._tunnel:
-            self._tunnel.__exit__()
-
-    def health(self):
-        return {}, []
-
-    def ssh_endpoint(self, ini, url):
-        """SSH-Ziel aus `ssh_url_to_repo` eines Projekts; sonst Web-Host und Port 22 bzw. `--ssh-port`."""
-        hostname, port = urllib.parse.urlparse(url).hostname, None
-        for p in self.api.call("GET", "/projects?per_page=1")[1] or []:
-            hostname, port = parse_ssh_url(p.get("ssh_url_to_repo", ""), hostname)
-        if self.cfg.get("ssh_host"):
-            hostname = ssh_resolved(self.cfg["ssh_host"])
-        return hostname, self.cfg.get("ssh_port") or port or 22
-
-    def host_keys(self, ssh_hostname, ssh_port):
-        # Kein API-Endpunkt. Mit `--ssh-host` scannt der Host der Instanz sich selbst über Loopback.
-        if self.cfg.get("ssh_host"):
-            return keyscan(self.host, "localhost", ssh_port)
-        # Sonst direkt beim SSH-Ziel; über das Netz ist das Vertrauen beim ersten Kontakt (TOFU).
-        if not is_loopback(ssh_hostname):
-            self.warnings.append(t("w_hostkey_tofu", host=ssh_hostname, port=ssh_port,
-                                   url=f"{self.cfg['url']}/help/instance_configuration#ssh-host-keys-fingerprints"))
-        return keyscan(Host(), ssh_hostname, ssh_port)
-
-    def bot_id(self):
-        users = self.api.call("GET", f"/users?username={BOT}")[1] or []
-        return users[0]["id"] if users else None
-
-    def ensure_bot(self):
-        if not self.bot_id():
-            self.api.call("POST", "/service_accounts", {"name": BOT_FULLNAME, "username": BOT})
-
-    def bot_keys(self):
-        return [{"id": k["id"], "title": k["title"], "key": " ".join(k["key"].split()[:2])}
-                for k in self.api.call("GET", f"/users/{self.bot_id()}/keys")[1] or []]
-
-    def add_bot_key(self, title, pub):
-        self.api.call("POST", f"/users/{self.bot_id()}/keys", {"title": title, "key": pub})
-
-    def delete_bot_key(self, key_id):
-        self.api.call("DELETE", f"/users/{self.bot_id()}/keys/{key_id}", soft=(404,))
-
-    def bot_tokens(self):
-        return [tok for tok in self.api.call("GET", f"/personal_access_tokens?user_id={self.bot_id()}&state=active")[1] or []]
-
-    def client_token(self, name):
-        self.revoke_token(name)
-        tok = self.api.call("POST", f"/users/{self.bot_id()}/personal_access_tokens", {"name": name, "scopes": ["api"]})[1]
-        return tok["token"], tok.get("expires_at")
-
-    def bot_token_valid(self, token):
-        status, me = Api(self.base, ("private", token), self.api_prefix).call("GET", "/user", soft=(401, 403))
-        return status == 200 and me.get("username") == BOT
-
-    def bot_token_names(self):
-        return [tok["name"] for tok in self.bot_tokens()]
-
-    def revoke_token(self, name):
-        for tok in self.bot_tokens():
-            if tok["name"] == name:
-                self.api.call("DELETE", f"/personal_access_tokens/{tok['id']}", soft=(404,))
-
-    def owners(self):
-        return [g["full_path"] for g in self.api.call("GET", "/groups?min_access_level=50&per_page=100")[1] or []]
-
-    def missing_repos(self):
-        bot = self.bot_id()
-        missing = []
-        for p in self.api.paged("/projects?membership=true", size="per_page"):
-            status, _ = self.api.call("GET", f"/projects/{p['id']}/members/all/{bot}", soft=(404,))
-            if status == 404:
-                missing.append(p["path_with_namespace"])
-        return missing
-
-    def grant(self, full):
-        body = {"user_id": self.bot_id(), "access_level": GITLAB_MAINTAINER}
-        status, _ = self.api.call("POST", f"/projects/{enc(full)}/members", body, soft=(409,))
-        if status == 409:
-            self.api.call("PUT", f"/projects/{enc(full)}/members/{body['user_id']}", {"access_level": GITLAB_MAINTAINER})
-
-    def get_repo(self, full):
-        status, repo = self.api.call("GET", f"/projects/{enc(full)}", soft=(404,))
-        return None if status == 404 else repo
-
-    def create_repo(self, owner, name, private):
-        body = {"name": name, "path": name, "visibility": "private" if private else "public",
-                "initialize_with_readme": False, "default_branch": "main"}
-        if owner != self.operator:
-            body["namespace_id"] = self.api.call("GET", f"/groups/{enc(owner)}")[1]["id"]
-        return self.api.call("POST", "/projects", body)[1]
-
-    def ensure_milestone(self, full, title):
-        found = self.api.call("GET", f"/projects/{enc(full)}/milestones?title={urllib.parse.quote(title)}")[1] or []
-        m = found[0] if found else self.api.call("POST", f"/projects/{enc(full)}/milestones", {"title": title})[1]
-        return {"id": m["id"], "title": m["title"]}
-
-    def repo_view(self, repo):
-        return {"private": repo.get("visibility") == "private", "html_url": repo.get("web_url"), "archived": repo.get("archived")}
-
-    def board_url(self, full):
-        return f"{self.cfg['url']}/{full}/-/boards"
-
-    def archive(self, full, undo):
-        return self.api.call("POST", f"/projects/{enc(full)}/{'unarchive' if undo else 'archive'}")[1].get("archived")
-
-    def delete_repo(self, full):
-        self.api.call("DELETE", f"/projects/{enc(full)}")
-        status, body = self.api.call("DELETE", f"/projects/{enc(full)}?permanently_remove=true&full_path={enc(full)}",
-                                     soft=(400, 403, 404))
-        return [] if status in (200, 202, 204, 404) else [t("w_gitlab_marked", body=str(body)[:200])]
-
-    @classmethod
-    def bot_api(cls, cfg, token):
-        base = cfg["url"] if not cfg.get("ssh_host") else cfg["mcp_url"]
-        return Api(base, ("private", token), cls.api_prefix)
-
-    @classmethod
-    def dependency(cls, api, full, issue, blocker, remove):
-        path = f"/projects/{enc(full)}/issues/{issue}/links"
-        links = api.call("GET", path)[1] or []
-        if blocker is not None and remove:
-            for link in links:
-                if link.get("iid") == blocker and link.get("link_type") == "is_blocked_by":
-                    api.call("DELETE", f"{path}/{link['issue_link_id']}", soft=(404,))
-        elif blocker is not None:
-            project_id = api.call("GET", f"/projects/{enc(full)}")[1]["id"]
-            status, body = api.call("POST", path, {"target_project_id": project_id, "target_issue_iid": blocker,
-                                                   "link_type": "is_blocked_by"}, soft=(400, 403))
-            if status in (400, 403):
-                raise Fail("deps_unsupported", body=str(body)[:200])
-        return [link["iid"] for link in api.call("GET", path)[1] or [] if link.get("link_type") == "is_blocked_by"]
-
-    def mcp_setup(self, inst):
-        node = run(["node", "--version"], check=False)
-        found = node.stdout.strip() if node.returncode == 0 else "-"
-        m = re.match(r"v(\d+)\.(\d+)", found)
-        if not m or (int(m.group(1)), int(m.group(2))) < (18, 17):
-            return None, [t("w_no_node", pkg=GITLAB_MCP_PACKAGE, found=found)]
-        body = ('GITLAB_PERSONAL_ACCESS_TOKEN="$(cat "$DIR/token")"\n'
-                f"GITLAB_API_URL={shlex.quote(self.cfg['mcp_url'] + '/api/v4')}\n"
-                "USE_MILESTONE=true\nGITLAB_DISABLE_VERSION_CHECK=true\n"
-                "export GITLAB_PERSONAL_ACCESS_TOKEN GITLAB_API_URL USE_MILESTONE GITLAB_DISABLE_VERSION_CHECK\n"
-                f"exec npx -y {GITLAB_MCP_PACKAGE}")
-        return body, []
+GITLAB_KEYS_PATH = "/-/user_settings/ssh_keys"
 
 
-PLATFORMS = {"forgejo": Forgejo, "gitea": Gitea, "gitlab": GitLab}
+def gitlab_ssh_user(ssh_alias, host, port):
+    """Konto, als das GitLab den Client-Schlüssel erkennt; None, wenn der Schlüssel (noch) fehlt."""
+    p = run(["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", ssh_alias], check=False, timeout=30)
+    out = p.stdout + p.stderr
+    m = re.search(r"Welcome to GitLab, @([\w.-]+)!", out)
+    if m:
+        return m.group(1)
+    if "Permission denied" in out:
+        return None
+    raise Fail("ssh_unreachable", {"host": host, "port": port}, host=host, port=port, err=out.strip()[-200:] or "-")
+
+
+def fingerprints(keys):
+    out = run(["ssh-keygen", "-lf", "-"], input="".join(f"x {k}\n" for k in keys), check=False).stdout
+    return [" ".join(line.split()[i] for i in (1, 3)) for line in out.splitlines() if len(line.split()) >= 4]
+
+
+def setup_gitlab(args, cfg, inst, client, warnings):
+    """GitLab ohne Token: Client-Schlüssel, Host-Key-Pinning und SSH-Alias für das Konto des Betreibers."""
+    hostname = args.ssh_hostname or cfg.get("ssh_hostname") or urllib.parse.urlparse(cfg["url"]).hostname
+    port = args.ssh_port or cfg.get("ssh_port") or 22
+    keyfile = keyfile_for(inst)
+    private_dir(keyfile.parent)
+    if not keyfile.exists():
+        run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", f"{NAME}-{client}@{inst}", "-f", str(keyfile)])
+    pub = " ".join(Path(str(keyfile) + ".pub").read_text().split()[:2])
+    if (cfg.get("ssh_hostname"), cfg.get("ssh_port")) != (hostname, port) or not cfg.get("host_keys"):
+        keys = keyscan(Host(), hostname, port)
+        if not keys:
+            raise Fail("ssh_unreachable", {"host": hostname, "port": port}, host=hostname, port=port, err="ssh-keyscan")
+        update_known_hosts(inst, keys)
+        cfg["host_keys"] = fingerprints(keys)
+        if not is_loopback(hostname):
+            warnings.append(t("w_hostkey_tofu", host=hostname, port=port,
+                              url=f"{cfg['url']}/help/instance_configuration#ssh-host-keys-fingerprints"))
+    update_ssh_config(inst, hostname, port, keyfile)
+    cfg.pop("bot", None)
+    cfg.update({"ssh_alias": alias(inst), "ssh_hostname": hostname, "ssh_port": port, "mode": "konto"})
+    save_config(inst, cfg)
+    account = gitlab_ssh_user(alias(inst), hostname, port)
+    if not account:
+        url = cfg["url"] + GITLAB_KEYS_PATH
+        raise Fail("ssh_key_required", {"public_key": pub, "title": f"{NAME}-{client}", "add_key_url": url,
+                                        "host_key_fingerprints": cfg["host_keys"]},
+                   url=url, title=f"{NAME}-{client}")
+    cfg["account"] = account
+    save_config(inst, cfg)
+    return {"instance": inst, "url": cfg["url"], "platform": "gitlab", "mode": "konto", "account": account,
+            "client": client, "ssh_alias": alias(inst), "ssh_hostname": hostname, "ssh_port": port,
+            "host_key_fingerprints": cfg["host_keys"]}, warnings
+
+
+PLATFORMS = {"forgejo": Forgejo, "gitea": Gitea}
 
 
 def adapter(cfg, operator=None):
+    if cfg.get("platform") == "gitlab":
+        raise Fail("gitlab_unsupported")
     use_ca(cfg.get("ca_cert"))
     return PLATFORMS[cfg.get("platform", "forgejo")](cfg, operator)
 
@@ -1416,7 +1288,7 @@ def cmd_setup(args):
            "client": client, "bot": BOT, "ca_cert": ca}
     if args.ssh_port:
         cfg["ssh_port"] = args.ssh_port
-    if plat in ("forgejo", "gitea"):
+    if plat in PLATFORMS:
         container, admin_exec = args.container or old.get("container"), args.admin_exec or old.get("admin_exec")
         if not container and not admin_exec:
             for c in Host(remote).containers():
@@ -1428,6 +1300,8 @@ def cmd_setup(args):
     if args.operator:
         cfg["operator"] = args.operator
     warnings = list(migrate_notes)
+    if plat == "gitlab":
+        return setup_gitlab(args, cfg, inst, client, warnings)
     with adapter(cfg, args.operator) as a:
         cfg["operator"] = a.operator
         ini, health = a.health()
@@ -1589,9 +1463,29 @@ def client_of(token_name):
     return None
 
 
+def revoke_local(inst, cfg):
+    if cfg.get("mcp_server"):
+        run(["claude", "mcp", "remove", cfg["mcp_server"], "-s", "user"], check=False)
+    update_ssh_config(inst, "", 0, "", remove=True)
+    update_known_hosts(inst, [], remove=True)
+    for suffix in ("", ".pub"):
+        Path(str(keyfile_for(inst)) + suffix).unlink(missing_ok=True)
+    for name in ("token", "start-mcp", "config.json"):
+        (inst_dir(inst) / name).unlink(missing_ok=True)
+
+
 def cmd_revoke(args):
     notes = migrate_legacy()
     inst, cfg = pick_instance(args.instanz)
+    if cfg.get("platform") == "gitlab":
+        client = cfg.get("client")
+        if not args.client:
+            raise Fail("client_required", {"clients": [client], "this_client": client}, clients=client)
+        if args.client != client:
+            raise Fail("client_unknown", {"clients": [client]}, client=args.client)
+        revoke_local(inst, cfg)
+        return {"instance": inst, "revoked": client, "local_cleanup": True}, notes + [
+            t("w_gitlab_revoke", title=f"{NAME}-{client}", url=cfg["url"] + GITLAB_KEYS_PATH)]
     with adapter(cfg) as a:
         names = a.bot_token_names()
         keys = a.bot_keys()
@@ -1609,20 +1503,15 @@ def cmd_revoke(args):
                 a.delete_bot_key(k["id"])
     local = args.local and args.client == cfg.get("client")
     if local:
-        if cfg.get("mcp_server"):
-            run(["claude", "mcp", "remove", cfg["mcp_server"], "-s", "user"], check=False)
-        update_ssh_config(inst, "", 0, "", remove=True)
-        update_known_hosts(inst, [], remove=True)
-        for suffix in ("", ".pub"):
-            Path(str(keyfile_for(inst)) + suffix).unlink(missing_ok=True)
-        for name in ("token", "start-mcp", "config.json"):
-            (inst_dir(inst) / name).unlink(missing_ok=True)
+        revoke_local(inst, cfg)
     return {"instance": inst, "revoked": args.client, "local_cleanup": local}, notes + a.warnings
 
 
 def cmd_dependency(args):
     notes = migrate_legacy()
     inst, cfg = pick_instance(args.instanz)
+    if cfg.get("platform") == "gitlab":
+        raise Fail("gitlab_unsupported")
     token = (inst_dir(inst) / "token").read_text().strip()
     use_ca(cfg.get("ca_cert"))
     cls = PLATFORMS[cfg.get("platform", "forgejo")]
@@ -1635,6 +1524,40 @@ def cmd_dependency(args):
         if tunnel:
             tunnel.__exit__()
     return {"instance": inst, "repo": args.repo, "issue": args.issue, "blocked_by": blocked_by}, notes
+
+
+def remote_access(remote):
+    """(ok, fehlertext) für einen Lesezugriff auf das entfernte Repository."""
+    p = run(["git", "ls-remote", remote], check=False, timeout=60)
+    return p.returncode == 0, (p.stderr or p.stdout).strip()[-200:]
+
+
+def cmd_connect(args):
+    notes = migrate_legacy()
+    inst, cfg = pick_instance(args.instanz)
+    workdir = Path(args.dir).resolve()
+    remote = f"{cfg['ssh_alias']}:{args.repo}.git"
+    ok, err = remote_access(remote)
+    if not ok:
+        raise Fail("repo_no_access", {"remote": remote}, remote=remote, err=err)
+    if run(["git", "-C", str(workdir), "rev-parse", "--git-dir"], check=False).returncode != 0:
+        workdir.mkdir(parents=True, exist_ok=True)
+        run(["git", "-C", str(workdir), "init", "-q", "-b", "main"])
+    current = run(["git", "-C", str(workdir), "remote", "get-url", "origin"], check=False)
+    if current.returncode != 0:
+        run(["git", "-C", str(workdir), "remote", "add", "origin", remote])
+    elif current.stdout.strip() != remote:
+        notes.append(t("w_remote_conflict", current=current.stdout.strip(), wanted=remote))
+    plat = cfg.get("platform", "forgejo")
+    if plat == "gitlab":
+        note = t("gitlab_md", repo=args.repo, inst=inst, account=cfg.get("account", "?"), alias=cfg["ssh_alias"])
+    else:
+        note = t("connect_md", platform=PLATFORMS[plat].label, repo=args.repo, inst=inst, alias=cfg["ssh_alias"],
+                 server=cfg.get("mcp_server") or alias(inst))
+    md = write_md_note(workdir, note)
+    cfg["dirs"] = sorted(set(cfg.get("dirs", [])) | {str(workdir)})
+    save_config(inst, cfg)
+    return {"instance": inst, "platform": plat, "repo": args.repo, "ssh_remote": remote, "claude_md": str(md)}, notes
 
 
 # --------------------------------------------------------------------------- CLI
@@ -1664,9 +1587,10 @@ def build_parser():
 
     s = sub.add_parser("einrichten", aliases=["setup"], help="Bot, Schlüssel, Token, MCP einrichten / set up")
     s.add_argument("--url", required=True)
-    s.add_argument("--plattform", "--platform", dest="platform", choices=list(PLATFORMS))
+    s.add_argument("--plattform", "--platform", dest="platform", choices=[*PLATFORMS, "gitlab"])
     s.add_argument("--ssh-host")
     s.add_argument("--ssh-port", type=int)
+    s.add_argument("--ssh-hostname", help="SSH-Ziel, falls abweichend vom Web-Host (z. B. interne Adresse)")
     s.add_argument("--ca-cert", help="Zertifikat einer internen Zertifizierungsstelle (PEM) / internal CA certificate")
     s.add_argument("--container")
     s.add_argument("--admin-exec")
@@ -1715,6 +1639,12 @@ def build_parser():
     x.add_argument("--dir", help="lokales Verzeichnis mitlöschen / also delete local directory")
     inst_arg(x)
     x.set_defaults(fn=cmd_delete)
+
+    v = sub.add_parser("verbinden", aliases=["connect"], help="Verzeichnis mit bestehendem Repo verbinden / connect directory to existing repo")
+    v.add_argument("--repo", required=True, help="eigentümer/name bzw. gruppe/…/name")
+    v.add_argument("--dir", default=".")
+    inst_arg(v)
+    v.set_defaults(fn=cmd_connect)
 
     b = sub.add_parser("abhaengigkeit", aliases=["dependency"], help="Issue-Abhängigkeiten / issue dependencies")
     b.add_argument("--repo", required=True, help="eigentümer/name")

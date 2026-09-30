@@ -70,132 +70,6 @@ class FakeServer:
         self.server.server_close()
 
 
-class FakeGitLab:
-    """Minimaler GitLab-Zustand: Admin `root`, Service Accounts, Keys, Tokens, Projekte, Meilensteine, Links."""
-
-    ADMIN_TOKEN = "admin-secret"
-
-    def __init__(self):
-        self.users = {1: {"id": 1, "username": "root", "is_admin": True}}
-        self.tokens = {self.ADMIN_TOKEN: {"id": 1, "user_id": 1, "name": "admin", "active": True}}
-        self.keys, self.projects, self.members, self.milestones, self.links = {}, {}, {}, {}, {}
-        self.groups = {"team": {"id": 50, "full_path": "team"}}
-        self.next = 100
-
-    def nid(self):
-        self.next += 1
-        return self.next
-
-    def user_of(self, headers):
-        tok = self.tokens.get(headers.get("PRIVATE-TOKEN"))
-        return self.users[tok["user_id"]] if tok and tok["active"] else None
-
-    def project(self, ident):
-        if ident.isdigit():
-            return self.projects.get(int(ident))
-        return next((p for p in self.projects.values() if p["path_with_namespace"] == ident), None)
-
-    def __call__(self, method, path, query, body, headers):
-        if path == "/api/v4/version":
-            return (200, {"version": "19.5.0", "revision": "x"}) if self.user_of(headers) else (401, {"message": "401 Unauthorized"})
-        me = self.user_of(headers)
-        if not me:
-            return 401, {"message": "401 Unauthorized"}
-        p = unquote(path[len("/api/v4"):])
-        parts = [unquote(x) for x in path[len("/api/v4"):].strip("/").split("/")]
-        if p == "/user":
-            return 200, me
-        if p == "/users" and method == "GET":
-            return 200, [u for u in self.users.values() if u["username"] == query.get("username", [""])[0]]
-        if p == "/service_accounts" and method == "POST":
-            uid = self.nid()
-            self.users[uid] = {"id": uid, "username": body["username"], "name": body["name"], "is_admin": False}
-            return 201, self.users[uid]
-        if parts[0] == "users" and parts[2:3] == ["keys"]:
-            uid = int(parts[1])
-            if method == "GET":
-                return 200, [k for k in self.keys.values() if k["user_id"] == uid]
-            if method == "POST":
-                kid = self.nid()
-                self.keys[kid] = {"id": kid, "user_id": uid, "title": body["title"], "key": body["key"] + " kommentar"}
-                return 201, self.keys[kid]
-            if method == "DELETE":
-                return (204, None) if self.keys.pop(int(parts[3]), None) else (404, {"message": "404"})
-        if parts[0] == "users" and parts[2:3] == ["personal_access_tokens"] and method == "POST":
-            tid = self.nid()
-            secret = f"tok-{tid}"
-            self.tokens[secret] = {"id": tid, "user_id": int(parts[1]), "name": body["name"], "active": True,
-                                   "expires_at": "2027-09-30"}
-            return 201, {"id": tid, "name": body["name"], "token": secret, "expires_at": "2027-09-30"}
-        if p == "/personal_access_tokens" and method == "GET":
-            uid = int(query["user_id"][0])
-            return 200, [{"id": v["id"], "name": v["name"]} for v in self.tokens.values() if v["user_id"] == uid and v["active"]]
-        if parts[0] == "personal_access_tokens" and method == "DELETE":
-            for v in self.tokens.values():
-                if v["id"] == int(parts[1]):
-                    v["active"] = False
-                    return 204, None
-            return 404, {"message": "404"}
-        if p == "/groups" and method == "GET":
-            return 200, list(self.groups.values())
-        if parts[0] == "groups" and method == "GET":
-            return 200, self.groups[parts[1]]
-        if p == "/projects" and method == "GET":
-            return 200, list(self.projects.values()) if query.get("page", ["1"])[0] == "1" else []
-        if p == "/projects" and method == "POST":
-            pid = self.nid()
-            ns = next((g["full_path"] for g in self.groups.values() if g["id"] == body.get("namespace_id")), me["username"])
-            self.projects[pid] = {"id": pid, "path_with_namespace": f"{ns}/{body['path']}", "visibility": body["visibility"],
-                                  "web_url": f"http://gitlab/{ns}/{body['path']}", "archived": False,
-                                  "ssh_url_to_repo": f"ssh://git@gitlab:2224/{ns}/{body['path']}.git", "marked": False}
-            return 201, self.projects[pid]
-        if parts[0] == "projects":
-            proj = self.project(parts[1])
-            if not proj:
-                return 404, {"message": "404 Project Not Found"}
-            rest = parts[2:]
-            if not rest and method == "GET":
-                return 200, proj
-            if not rest and method == "DELETE":
-                if "permanently_remove" in query:
-                    del self.projects[proj["id"]]
-                    return 202, {"message": "202 Accepted"}
-                proj["marked"] = True
-                return 202, {"message": "202 Accepted"}
-            if rest in (["archive"], ["unarchive"]):
-                proj["archived"] = rest == ["archive"]
-                return 201, proj
-            if rest == ["members"] and method == "POST":
-                key = (proj["id"], body["user_id"])
-                if key in self.members:
-                    return 409, {"message": "Member already exists"}
-                self.members[key] = body["access_level"]
-                return 201, {"id": body["user_id"], "access_level": body["access_level"]}
-            if rest[:1] == ["members"] and method == "PUT":
-                self.members[(proj["id"], int(rest[1]))] = body["access_level"]
-                return 200, {}
-            if rest[:2] == ["members", "all"]:
-                return (200, {"id": int(rest[2])}) if (proj["id"], int(rest[2])) in self.members else (404, {"message": "404"})
-            if rest == ["milestones"] and method == "GET":
-                return 200, [m for m in self.milestones.values() if m["project_id"] == proj["id"] and m["title"] == query.get("title", [None])[0]]
-            if rest == ["milestones"] and method == "POST":
-                mid = self.nid()
-                self.milestones[mid] = {"id": mid, "title": body["title"], "project_id": proj["id"]}
-                return 201, self.milestones[mid]
-            if rest[:1] == ["issues"] and rest[2:3] == ["links"]:
-                key = (proj["id"], int(rest[1]))
-                if method == "GET":
-                    return 200, self.links.get(key, [])
-                if method == "POST":
-                    link = {"iid": body["target_issue_iid"], "link_type": body["link_type"], "issue_link_id": self.nid()}
-                    self.links.setdefault(key, []).append(link)
-                    return 201, link
-                if method == "DELETE":
-                    self.links[key] = [x for x in self.links.get(key, []) if x["issue_link_id"] != int(rest[3])]
-                    return 200, {}
-        return 404, {"message": f"404 unbekannt {method} {p}"}
-
-
 # --------------------------------------------------------------------------- Kern
 
 class ReplaceBlock(unittest.TestCase):
@@ -461,133 +335,77 @@ class InternalCa(SandboxHome):
 
 # --------------------------------------------------------------------------- GitLab-Adapter
 
-class GitLabAdapter(SandboxHome):
+class GitLabAccount(SandboxHome):
+    """GitLab ohne Token: nur SSH-Schlüssel, Host-Key und Alias für das Konto des Betreibers."""
+
     def setUp(self):
         super().setUp()
-        self.gl = FakeGitLab()
-        self.srv = FakeServer(self.gl)
-        self.addCleanup(self.srv.close)
-        self.cfg = {"url": self.srv.url, "platform": "gitlab", "instance": "gl", "client": "box", "ssh_port": 2224,
-                    "ssh_alias": "gitlink-gl", "mcp_url": self.srv.url}
-        original = gitlink.keyscan
-        gitlink.keyscan = lambda host, name, port: ["ssh-ed25519 HOSTKEY"]
-        self.addCleanup(setattr, gitlink, "keyscan", original)
+        self.user = None
+        self.scans = []
+        patches = {"keyscan": lambda host, name, port: self.scans.append((name, port)) or ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"],
+                   "gitlab_ssh_user": lambda a, h, p: self.user,
+                   "remote_access": lambda remote: (self.user is not None, "denied")}
+        for name, fn in patches.items():
+            self.addCleanup(setattr, gitlink, name, getattr(gitlink, name))
+            setattr(gitlink, name, fn)
 
-    def store_admin_token(self):
-        gitlink.write_private(gitlink.inst_dir("gl") / "admin-token", FakeGitLab.ADMIN_TOKEN + "\n")
-
-    def test_missing_admin_token_names_path(self):
-        with self.assertRaises(gitlink.Fail) as e:
-            gitlink.adapter(self.cfg).__enter__()
-        self.assertEqual(e.exception.code, "admin_token_required")
-        self.assertTrue(e.exception.details["path"].endswith("/gl/admin-token"))
-        self.assertEqual(e.exception.details["create_url"],
-                         f"{self.srv.url}/-/user_settings/personal_access_tokens?name=gitlink-admin&scopes=api")
-        self.assertIn(e.exception.details["create_url"], e.exception.message)
-
-    def test_setup_with_given_platform_asks_for_token_before_any_api_call(self):
+    def cli(self, *argv):
         buf = io.StringIO()
         with redirect_stdout(buf):
-            gitlink.main(["--lang", "de", "einrichten", "--url", "http://localhost:1", "--plattform", "gitlab",
-                          "--instanz", "gl", "--no-mcp"])
-        out = json.loads(buf.getvalue())
-        self.assertEqual(out["error"], "admin_token_required")  # Port 1 antwortet nicht: keine Erkennung versucht
+            gitlink.main(["--lang", "de"] + list(argv))
+        return json.loads(buf.getvalue())
 
-    def test_full_flow(self):
-        self.store_admin_token()
-        cfg = dict(self.cfg)
-        with gitlink.adapter(cfg) as a:
-            self.assertEqual(a.operator, "root")
-            a.ensure_bot()
-            a.ensure_bot()  # idempotent
-            self.assertEqual(sum(u["username"] == gitlink.BOT for u in self.gl.users.values()), 1)
-            gitlink.ensure_client_key(a, "gl", "box")
-            gitlink.ensure_client_key(a, "gl", "box")
-            self.assertEqual(len(a.bot_keys()), 1)
-            expires = gitlink.ensure_client_token(a, "gl", cfg, "box")
-            self.assertEqual(expires, "2027-09-30")
-            self.assertIsNone(gitlink.ensure_client_token(a, "gl", cfg, "box"))  # gültig, bleibt
-            self.assertEqual(a.bot_token_names(), ["gitlink-box"])
-            self.assertEqual(a.owners(), ["team"])
-            repo = a.create_repo("team", "demo", True)
-            self.assertEqual(repo["path_with_namespace"], "team/demo")
-            self.assertEqual(a.missing_repos(), ["team/demo"])
-            a.grant("team/demo")
-            a.grant("team/demo")  # 409 → PUT
-            self.assertEqual(a.missing_repos(), [])
-            self.assertEqual(self.gl.members[(repo["id"], a.bot_id())], gitlink.GITLAB_MAINTAINER)
-            m1 = a.ensure_milestone("team/demo", "demo")
-            self.assertEqual(a.ensure_milestone("team/demo", "demo"), m1)
-            self.assertTrue(a.archive("team/demo", False))
-            self.assertFalse(a.archive("team/demo", True))
-            self.assertEqual(a.ssh_endpoint({}, self.srv.url)[1], 2224)
-            self.assertEqual(a.board_url("team/demo"), f"{self.srv.url}/team/demo/-/boards")
-            self.assertEqual(a.delete_repo("team/demo"), [])
-            self.assertIsNone(a.get_repo("team/demo"))
-        token = (gitlink.inst_dir("gl") / "token").read_text().strip()
-        self.assertTrue(token.startswith("tok-"))
+    def setup(self):
+        return self.cli("einrichten", "--url", "https://gitlab.example.org", "--plattform", "gitlab",
+                        "--ssh-hostname", "10.0.0.5", "--client", "box")
 
-    def test_host_keys_scan_the_real_ssh_target(self):
-        scanned = []
-        gitlink.keyscan = lambda host, name, port: scanned.append((host.ssh_host, name, port)) or ["ssh-ed25519 K"]
-        self.store_admin_token()
-        with gitlink.adapter(dict(self.cfg)) as a:
-            self.assertEqual(a.host_keys("gitlab.example.org", 22), ["ssh-ed25519 K"])
-            self.assertEqual(len(a.warnings), 1)  # über das Netz: TOFU-Warnung
-            self.assertIn("gitlab.example.org:22", a.warnings[0])
-            a.host_keys("127.0.0.1", 2224)
-            self.assertEqual(len(a.warnings), 1)  # Loopback: keine Warnung
-        a = gitlink.adapter(dict(self.cfg, ssh_host="admin@forge"))
-        a.host_keys("forge.example.org", 22)
-        self.assertEqual(scanned, [(None, "gitlab.example.org", 22), (None, "127.0.0.1", 2224),
-                                   ("admin@forge", "localhost", 22)])
-        self.assertEqual(a.warnings, [])
+    def test_setup_asks_for_key_then_confirms_account(self):
+        out = self.setup()
+        self.assertEqual(out["error"], "ssh_key_required")
+        d = out["details"]
+        self.assertEqual(d["add_key_url"], "https://gitlab.example.org/-/user_settings/ssh_keys")
+        self.assertEqual(d["title"], "gitlink-box")
+        self.assertTrue(d["public_key"].startswith("ssh-ed25519 "))
+        self.assertTrue(d["host_key_fingerprints"][0].startswith("SHA256:"))
+        self.assertEqual(self.scans, [("10.0.0.5", 22)])
+        conf = (self.home / ".ssh" / "config").read_text()
+        self.assertIn("HostName 10.0.0.5", conf)
+        self.user = "tmueter"
+        out = self.setup()
+        self.assertTrue(out["ok"])
+        self.assertEqual((out["result"]["account"], out["result"]["mode"]), ("tmueter", "konto"))
+        self.assertEqual(self.scans, [("10.0.0.5", 22)])  # Host-Key bleibt gepinnt, kein zweiter Scan
+        self.assertFalse((gitlink.inst_dir("gitlab-example-org-443") / "token").exists())  # kein Token
 
-    def test_ssh_endpoint_from_project_ssh_url(self):
-        self.assertEqual(gitlink.parse_ssh_url("ssh://git@git.example.org:2224/g/p.git", "web"), ("git.example.org", 2224))
-        self.assertEqual(gitlink.parse_ssh_url("ssh://git@git.example.org/g/p.git", "web"), ("git.example.org", 22))
-        self.assertEqual(gitlink.parse_ssh_url("git@git.example.org:g/p.git", "web"), ("git.example.org", 22))
-        self.assertEqual(gitlink.parse_ssh_url("", "web"), ("web", None))
-        self.store_admin_token()
-        cfg = dict(self.cfg)
-        del cfg["ssh_port"]
-        with gitlink.adapter(cfg) as a:
-            self.assertEqual(a.ssh_endpoint({}, self.srv.url), ("127.0.0.1", 22))  # noch kein Projekt
-            a.create_repo("root", "p", True)
-            self.assertEqual(a.ssh_endpoint({}, self.srv.url), ("gitlab", 2224))
+    def test_connect_writes_commit_rule_and_origin(self):
+        self.user = "tmueter"
+        self.setup()
+        work = self.home / "work"
+        out = self.cli("verbinden", "--repo", "team/app", "--dir", str(work))
+        self.assertTrue(out["ok"])
+        self.assertEqual(gitlink.run(["git", "-C", str(work), "remote", "get-url", "origin"]).stdout.strip(),
+                         "gitlink-gitlab-example-org-443:team/app.git")
+        md = (work / "CLAUDE.md").read_text()
+        self.assertIn("nur auf ausdrückliche Anforderung", md)
+        self.assertIn("@tmueter", md)
 
-    def test_dependency_via_bot_token(self):
-        self.store_admin_token()
-        cfg = dict(self.cfg)
-        with gitlink.adapter(cfg) as a:
-            a.ensure_bot()
-            gitlink.ensure_client_token(a, "gl", cfg, "box")
-            a.create_repo("root", "p", False)
-        api = gitlink.GitLab.bot_api(cfg, (gitlink.inst_dir("gl") / "token").read_text().strip())
-        self.assertEqual(gitlink.GitLab.dependency(api, "root/p", 2, 1, False), [1])
-        self.assertEqual(gitlink.GitLab.dependency(api, "root/p", 2, None, False), [1])
-        self.assertEqual(gitlink.GitLab.dependency(api, "root/p", 2, 1, True), [])
+    def test_connect_without_access_fails_clearly(self):
+        self.user = "tmueter"
+        self.setup()
+        self.user = None
+        out = self.cli("verbinden", "--repo", "team/app", "--dir", str(self.home / "w"))
+        self.assertEqual(out["error"], "repo_no_access")
 
-    def test_revoke_via_cli(self):
-        self.store_admin_token()
-        cfg = dict(self.cfg)
-        with gitlink.adapter(cfg) as a:
-            a.ensure_bot()
-            gitlink.ensure_client_key(a, "gl", "box")
-            gitlink.ensure_client_token(a, "gl", cfg, "box")
-        gitlink.save_config("gl", cfg)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            gitlink.main(["--lang", "de", "widerrufen"])
-        out = json.loads(buf.getvalue())
-        self.assertEqual((out["error"], out["details"]["clients"]), ("client_required", ["box"]))
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            gitlink.main(["--lang", "de", "widerrufen", "--client", "box"])
-        self.assertTrue(json.loads(buf.getvalue())["ok"])
-        bot = next(u["id"] for u in self.gl.users.values() if u["username"] == gitlink.BOT)
-        self.assertEqual([k for k in self.gl.keys.values() if k["user_id"] == bot], [])
-        self.assertFalse(any(v["active"] for v in self.gl.tokens.values() if v["user_id"] == bot))
+    def test_other_commands_are_refused_and_revoke_is_local(self):
+        self.user = "tmueter"
+        self.setup()
+        for argv in (["repo", "--name", "x", "--privat"], ["archivieren", "--repo", "a/b"], ["freigeben", "a/b"],
+                     ["abhaengigkeit", "--repo", "a/b", "--issue", "1"]):
+            self.assertEqual(self.cli(*argv)["error"], "gitlab_unsupported", argv)
+        out = self.cli("widerrufen", "--client", "box", "--lokal")
+        self.assertTrue(out["ok"])
+        self.assertIn("/-/user_settings/ssh_keys", out["warnings"][-1])
+        self.assertFalse((self.home / ".ssh" / "gitlink_gitlab-example-org-443").exists())
 
 
 # --------------------------------------------------------------------------- Migration

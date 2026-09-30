@@ -10,7 +10,7 @@ Der Skill versteht Deutsch und Englisch: Er antwortet in der Sprache, in der man
 |---|---|---|---|
 | Forgejo 16 | vollständig, gegen echte Instanz getestet; der Skill kann Forgejo auch installieren | Forgejo-CLI im Container, vorübergehender Admin-Token | forgejo-mcp |
 | Gitea 28 | vollständig, gegen echte Instanz getestet | Gitea-CLI im Container, vorübergehender Admin-Token | gitea-mcp |
-| GitLab, selbst gehostet | umgesetzt, **nur gegen einen nachgebauten API-Server getestet** | Admin-Token, den der Betreiber einmal ablegt | `@zereight/mcp-gitlab` (Node.js ≥ 18.17) |
+| GitLab, selbst gehostet | nur Konto per SSH: Schlüssel, Host-Key, Verbinden mit selbst angelegten Repos; Commit/Push nur auf Anforderung | keiner, kein Token | keiner |
 
 GitHub und gitlab.com werden nicht unterstützt.
 
@@ -33,7 +33,7 @@ Die Entscheidungen hinter der Spezifikation sind als geschlossene Issues zweier 
 - Python 3.8 oder neuer
 - OpenSSH-Client (`ssh`, `ssh-keygen`, `ssh-keyscan`) und Git
 - Forgejo und Gitea: Docker auf dem Rechner der Instanz, direkt oder per `sudo` ohne Passwortabfrage nutzbar, dazu `docker compose` oder `docker-compose` für die Installation. Für Installationen ohne Container gibt es `--admin-exec`.
-- GitLab: ein Admin-Token (Scope `api`) und für den MCP-Server Node.js ab 18.17.
+- GitLab: ein Konto, in dem du einen SSH-Schlüssel eintragen kannst, und SSH-Zugang zur Instanz.
 - Für Clients auf anderen Rechnern: SSH-Zugang zum Host der Instanz.
 
 forgejo-mcp und gitea-mcp müssen nicht vorab installiert sein. Fehlen sie, lädt der Skill die aktuelle Version aus den Releases des jeweiligen Projekts nach `~/.local/bin` und prüft die SHA-256-Prüfsumme.
@@ -57,8 +57,9 @@ In Claude Code genügt eine Aufforderung in eigenen Worten, zum Beispiel „Rich
 
 | Aufruf | Wirkung |
 |---|---|
-| `/gitlink einrichten` bzw. `/gitlink setup` | Findet eine laufende Instanz und erkennt ihre Plattform oder installiert auf Wunsch Forgejo. Richtet Bot-Konto, Client-Schlüssel, Host-Key-Pinning, Token und den MCP-Server `gitlink-<instanz>` ein. Fragt zum Schluss, welche bestehenden Repositories Claude nutzen darf. Bei GitLab fordert der erste Lauf den Admin-Token an. |
+| `/gitlink einrichten` bzw. `/gitlink setup` | Findet eine laufende Instanz und erkennt ihre Plattform oder installiert auf Wunsch Forgejo. Richtet Bot-Konto, Client-Schlüssel, Host-Key-Pinning, Token und den MCP-Server `gitlink-<instanz>` ein. Fragt zum Schluss, welche bestehenden Repositories Claude nutzen darf. Bei GitLab richtet er nur SSH für dein Konto ein; den Schlüssel trägst du selbst ein. |
 | `/gitlink repo` | Legt ein Repository an. Fragt nach Eigentümer (falls Organisationen oder Gruppen existieren), Name und Sichtbarkeit, trägt das Bot-Konto ein, legt einen Meilenstein an und verbindet das Arbeitsverzeichnis per SSH. Am Ende folgt die Aufforderung, ein Projektboard anzulegen. |
+| `/gitlink verbinden` bzw. `/gitlink connect` | Verbindet das Arbeitsverzeichnis mit einem bestehenden Repo. Bei GitLab gilt danach: Claude hilft nur, Commit und Push nur auf ausdrückliche Anforderung. |
 | `/gitlink abhaengigkeit` bzw. `/gitlink dependency` | Setzt, entfernt oder listet Abhängigkeiten zwischen Issues. |
 | `/gitlink archivieren` bzw. `/gitlink archive` | Macht ein Repository schreibgeschützt; lässt sich wieder aufheben. |
 | `/gitlink löschen` bzw. `/gitlink delete` | Löscht ein Repository nach ausdrücklicher Bestätigung, auf Wunsch samt verbundenem lokalem Verzeichnis. Das Verzeichnis wird nur gelöscht, wenn es auf dieses Repository zeigt und keine ungesicherten Änderungen oder ungepushten Commits enthält. |
@@ -72,8 +73,8 @@ Das Skript lässt sich auch direkt aufrufen, etwa zur Fehlersuche. `python3 skil
 
 ## Sicherheit
 
-- Bei Forgejo und Gitea nutzt der Skill Admin-Rechte nur während eines Laufs und löscht den dafür erzeugten Admin-Token am Ende wieder. Bei GitLab bleibt der vom Betreiber abgelegte Admin-Token gespeichert, weil GitLab keinen Weg bietet, ihn ohne Handarbeit neu zu erzeugen.
-- Das Bot-Konto `claude-bot` sieht nur Repositories, in die es ausdrücklich eingetragen ist (Forgejo/Gitea: `restricted`; GitLab: Service Account).
+- Bei Forgejo und Gitea nutzt der Skill Admin-Rechte nur während eines Laufs und löscht den dafür erzeugten Admin-Token am Ende wieder. Bei GitLab bekommt Claude gar keinen Token, nur einen SSH-Schlüssel, den du selbst in deinem Konto einträgst.
+- Das Bot-Konto `claude-bot` sieht nur Repositories, in die es ausdrücklich eingetragen ist (Forgejo/Gitea: `restricted`). Bei GitLab gibt es keinen Bot; Claude arbeitet dort nur lokal und pusht nur auf Anforderung.
 - Jeder Claude-Client hat einen eigenen Token und einen eigenen SSH-Schlüssel.
 - Geheimnisse liegen nur in Dateien, die allein der eigene Benutzer lesen kann (`~/.config/gitlink/`, `~/.ssh/`). Sie erscheinen nie im Chat und nicht in `~/.claude.json`.
 - Tokens gehen nur über Loopback, HTTPS oder einen SSH-Tunnel, nie über unverschlüsseltes HTTP im Netz.
@@ -85,4 +86,4 @@ Das Skript lässt sich auch direkt aufrufen, etwa zur Fehlersuche. `python3 skil
 python3 -m unittest tests/test_gitlink.py
 ```
 
-Die Unit-Tests brauchen weder Docker noch eine echte Instanz; GitLab wird dabei durch einen nachgebauten API-Server ersetzt. Den vollständigen Ablauf haben Wegwerf-Instanzen von Forgejo 16 und Gitea 28 in einem abgeschotteten Home-Verzeichnis geprüft. Dieser Test ist nicht automatisiert, und gegen eine echte GitLab-Instanz fand keiner statt.
+Die Unit-Tests brauchen weder Docker noch eine echte Instanz. Den vollständigen Ablauf haben Wegwerf-Instanzen von Forgejo 16 und Gitea 28 in einem abgeschotteten Home-Verzeichnis geprüft; dieser Test ist nicht automatisiert. Der GitLab-Weg ist gegen eine echte Instanz noch nicht vollständig getestet.

@@ -1,6 +1,6 @@
 ---
 name: gitlink
-description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo, Gitea or self-hosted GitLab instance (einrichten, setup, install Forgejo), create a repository for the current directory (Repo anlegen, create repo), set issue dependencies (Abhängigkeit, blocked by), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
+description: Forgejo/Gitea/GitLab + Claude einrichten / set up Forgejo, Gitea or GitLab for Claude. Use when the user wants to connect Claude to a Forgejo, Gitea or self-hosted GitLab instance (einrichten, setup, install Forgejo), create a repository or connect the current directory to an existing one (Repo anlegen, verbinden, create repo, connect), set issue dependencies (Abhängigkeit, blocked by), archive or delete a repository (archivieren, löschen, archive, delete), or revoke a Claude client's access (widerrufen, revoke).
 ---
 
 # gitlink
@@ -29,12 +29,9 @@ Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. D
    - Keine: frage, ob und wo eine Instanz läuft (Adresse; bei einem anderen Rechner zusätzlich den SSH-Host, über den der Betreiber dorthin kommt) oder ob du eine installieren sollst. Installiert wird immer Forgejo; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen.
 2. **Installieren (nur auf Wunsch):** frage Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>`. Standard sind `~/forgejo` und die Ports 3000/2222; nur bei `port_busy` fragst du nach anderen Ports (`--web-port`, `--ssh-port`). Nenne dem Betreiber danach den Pfad der Passwortdatei aus `result.password_file`.
 3. **Einrichten:** `einrichten --url <url>`. Läuft die Instanz auf einem anderen Rechner, zusätzlich `--ssh-host <host>`; die URL ist dann die Adresse, unter der die Instanz auf diesem Rechner erreichbar ist (meist `http://localhost:3000`).
-   - **GitLab, Token anlegen:** Endet der Lauf mit `admin_token_required`, halte an und gib dem Betreiber genau diese Schritte:
-     1. Token in GitLab anlegen über den Link `details.create_url` (Name und Scope `api` sind vorausgefüllt; ist Admin Mode aktiv, zusätzlich `admin_mode`).
-     2. Token im **eigenen Terminal** ablegen, mit dem Befehl aus `message` (Ziel `details.path`). Den Token nie im Chat erfragen oder annehmen.
-     3. Bescheid geben, wenn beides erledigt ist.
-
-     Warte auf die Bestätigung und wiederhole dann `einrichten`.
+   - **GitLab:** Immer mit `--plattform gitlab`. Der Skill arbeitet dort ohne Token und ohne Bot, nur mit dem Konto des Betreibers per SSH. Ist der Web-Host nicht per SSH erreichbar (etwa hinter einem Anmelde-Proxy), gib die interne SSH-Adresse mit `--ssh-hostname` an.
+     - Endet der Lauf mit `ssh_key_required`, halte an: Zeig dem Betreiber `details.public_key`, den Link `details.add_key_url` und den Titel `details.title`, damit er den Schlüssel in seinem GitLab-Konto einträgt. Nenne ihm auch `details.host_key_fingerprints` zum Vergleich mit der Seite `/help/instance_configuration` der Instanz. Warte auf seine Bestätigung und wiederhole dann `einrichten`.
+     - Für GitLab entfallen Abgleich, MCP-Server und Matt-Pocock-Empfehlung.
    - **Anmelde-Proxy:** Endet der Lauf mit `auth_proxy`, steht vor der Instanz ein Proxy mit eigener Anmeldung (z. B. Microsoft Entra). Kein Token hilft dagegen. Erkläre das und frage nach einem Zugang ohne Proxy: VPN mit interner Adresse oder ein Rechner im Netz der Instanz (`--ssh-host`). Ist die Plattform bekannt, aber die Erkennung scheitert, übergib `--plattform gitlab`.
    - **Interne Zertifizierungsstelle:** Scheitert HTTPS an einem unbekannten Zertifikat (die Instanz wird dann nicht gefunden), frage nach dem Zertifikat der internen Stelle als PEM-Datei und übergib es mit `--ca-cert <datei>`. Der Skill vertraut ihm nur für diese Instanz; das System bleibt unverändert.
 4. **Abgleich:** Enthält `result.missing_repos` Einträge, zeige die Liste und frage, welche Repos Claude nutzen darf. Für die gewählten: `freigeben <eigentümer/repo> …`.
@@ -42,6 +39,15 @@ Geheimnisse (Tokens, Passwörter, private Schlüssel) liest und zeigst du nie. D
 6. [Matt-Pocock-Skills empfehlen](#matt-pocock-skills-empfehlen).
 
 Fertig ist der Unterbefehl, wenn `einrichten` mit `"ok": true` zurückkam, jede Warnung weitergegeben, über jedes Repo aus `missing_repos` entschieden und die Empfehlung beantwortet ist.
+
+## Unterbefehl: verbinden / connect
+
+Verbindet das Arbeitsverzeichnis mit einem Repo, das der Betreiber selbst angelegt hat. Das ist bei GitLab der einzige Weg zu einem Repo.
+
+1. Frage nach dem Pfad des Repos (`gruppe/…/name`) und dem Verzeichnis.
+2. `verbinden --repo <pfad> --dir <verzeichnis>`. Bei `repo_no_access` gib die Meldung weiter: Das Repo fehlt, oder das Konto hat keinen Zugriff.
+
+**Bei GitLab gilt danach:** Du leistest nur Hilfestellung. `git commit` und `git push` führst du nur aus, wenn der Betreiber es ausdrücklich verlangt. Auf GitLab selbst änderst du nichts (keine Issues, Merge Requests oder Einstellungen). Das Skript hat diese Regel auch in die `CLAUDE.md` des Verzeichnisses geschrieben.
 
 ## Unterbefehl: repo
 
@@ -101,9 +107,11 @@ Letzter Schritt von `einrichten` und `repo`. Hat der Betreiber die Empfehlung in
 | `owner_required` | Frage nach dem Eigentümer (Betreiber oder eine Organisation aus `details.orgs`). |
 | `port_busy` | Schlage die Ports aus `details.free` vor und frage. |
 | `no_admin_access` | Frage, in welchem Container Forgejo bzw. Gitea läuft (`--container`) oder mit welchem Befehl die CLI der Plattform aufgerufen wird (`--admin-exec`). |
-| `admin_token_required` | GitLab: Gib den Befehl aus `message` weiter; der Betreiber legt den Admin-Token im eigenen Terminal ab. Danach `einrichten` wiederholen. |
-| `admin_token_invalid` | GitLab: Der Token ist ungültig, abgelaufen oder kein Admin-Token; der Betreiber legt einen neuen unter `details.path` ab. |
 | `auth_proxy` | Siehe „Anmelde-Proxy“ unter `einrichten`. |
+| `ssh_key_required` | Siehe „GitLab“ unter `einrichten`. |
+| `ssh_unreachable` | SSH ist nicht erreichbar. Frage, ob der Zugang (z. B. VPN) steht und wie die interne Adresse lautet (`--ssh-hostname`). |
+| `gitlab_unsupported` | Bei GitLab gibt es nur `einrichten`, `verbinden` und `widerrufen`; erkläre das. |
+| `repo_no_access` | Das Repo fehlt oder das Konto hat keinen Zugriff; der Betreiber legt es an bzw. klärt die Rechte. |
 | `unsupported_platform` | Unter der Adresse läuft weder Forgejo noch Gitea noch GitLab; frage nach der richtigen Adresse. |
 | `insecure_url` | Die Instanz ist nur per unverschlüsseltem HTTP über das Netz erreichbar. Frage nach dem SSH-Host für einen Tunnel (`--ssh-host`) oder einer HTTPS-Adresse. |
 | alle anderen | Gib `message` weiter und frage, wie der Betreiber fortfahren will. |
