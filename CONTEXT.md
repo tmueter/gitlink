@@ -1,41 +1,45 @@
 # igit
 
-Zero-touch integration between a self-hosted Forgejo instance and Claude clients: Claude can work against the forge without a human hand-carrying keys, tokens, or remotes.
+Zero-Touch-Integration zwischen einer selbst betriebenen Forgejo-Instanz und Claude-Clients: Claude kann mit der Forge arbeiten, ohne dass ein Mensch Schlüssel, Tokens oder Remotes von Hand überträgt.
 
-## Language
+## Sprache
 
-**Instance**:
-One self-hosted Forgejo server, operated by the owner for their own use.
-_Avoid_: server, forge (when the specific deployment is meant)
+**Instanz**:
+Ein selbst betriebener Forgejo-Server, den der Betreiber für den eigenen Gebrauch betreibt.
+_Vermeiden_: Server, Forge (wenn die konkrete Installation gemeint ist)
 
-**Owner**:
-The human who operates the Instance and on whose behalf Claude works.
-_Avoid_: admin, user (ambiguous with Forgejo accounts)
+**Betreiber**:
+Der Mensch, der die Instanz betreibt und in dessen Auftrag Claude arbeitet.
+_Vermeiden_: Admin, Owner, Nutzer (mehrdeutig mit Forgejo-Konten und Repo-Eigentümern)
 
-**Claude client**:
-A machine or environment where Claude (e.g. Claude Code) runs and talks to the Instance over git and the API.
-_Avoid_: agent host, workstation
+**Claude-Client**:
+Ein Rechner oder eine Umgebung, in der Claude (z. B. Claude Code) läuft und über Git und die API mit der Instanz spricht.
+_Vermeiden_: Agent-Host, Arbeitsplatz
 
-**Bot account**:
-The dedicated Forgejo user through which every Claude client acts; distinct from the Owner's own account so Claude's access can be audited and revoked on its own.
-_Avoid_: service account, claude user
+**Bot-Konto**:
+Das dedizierte Forgejo-Konto, über das jeder Claude-Client handelt; getrennt vom eigenen Konto des Betreibers, damit Claudes Zugriff eigenständig geprüft und widerrufen werden kann.
+_Vermeiden_: Service-Account, Claude-User
 
-**Client key**:
-The SSH key pair belonging to a Claude client, whose public half is registered on the Bot account.
+**Client-Schlüssel**:
+Das SSH-Schlüsselpaar eines Claude-Clients, dessen öffentliche Hälfte am Bot-Konto hinterlegt ist.
 
-**Host key pinning**:
-Recording the Instance's SSH host key on a Claude client ahead of first connection, so the client never trusts an unverified host.
-_Avoid_: TOFU, known_hosts setup
+**Host-Key-Pinning**:
+Das Hinterlegen des SSH-Host-Keys der Instanz auf einem Claude-Client vor der ersten Verbindung, sodass der Client nie einem unverifizierten Host vertraut.
+_Vermeiden_: TOFU, known_hosts-Einrichtung
 
-**Zero-touch**:
-Requiring no manual action from the Owner beyond starting the installation.
+**Registrierung**:
+Der Vorgang, durch den ein neuer Claude-Client an einer bestehenden Instanz Client-Schlüssel, Host-Key-Pinning und Token erhält.
+_Vermeiden_: Enrollment, Onboarding
 
-## Relationships
+**Zero-Touch**:
+Erfordert vom Betreiber keine manuelle Handlung über das Starten der Installation hinaus.
 
-- An **Instance** has exactly one **Bot account**
-- A **Bot account** has one **Client key** per **Claude client**
-- A **Claude client** pins the host key of each **Instance** it talks to
+## Beziehungen
 
-## Flagged ambiguities
+- Eine **Instanz** hat genau ein **Bot-Konto**
+- Ein **Bot-Konto** hat einen **Client-Schlüssel** pro **Claude-Client**
+- Ein **Claude-Client** pinnt den Host-Key jeder **Instanz**, mit der er spricht
 
-- "API key" in the original idea: means a Forgejo access token owned by the **Bot account**; whether it can be scoped to one repository is unresolved.
+## Markierte Mehrdeutigkeiten
+
+- "API-Key" in der ursprünglichen Idee: gemeint ist ein Forgejo-Access-Token des **Bot-Kontos**; ob er sich auf ein Repository beschränken lässt, war offen — Forgejo 16 unterstützt repo-beschränkte Tokens über die API.
