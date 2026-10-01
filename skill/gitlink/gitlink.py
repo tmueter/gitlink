@@ -109,6 +109,18 @@ MSG = {
         "de": "Befehl fehlgeschlagen ({cmd}): {err}",
         "en": "Command failed ({cmd}): {err}",
     },
+    "instance_data_missing": {
+        "de": "Der Container {container} läuft, aber Konfiguration und Daten der Instanz fehlen ({path} gibt es nicht). Vermutlich wurde der Datenordner {source} gelöscht oder verschoben, während der Container lief. Lösung: Daten aus einem Backup zurückspielen und den Container neu starten, oder den Container entfernen und Forgejo neu installieren.",
+        "en": "The container {container} is running, but the instance's configuration and data are missing ({path} does not exist). The data folder {source} was probably deleted or moved while the container was running. Fix: restore the data from a backup and restart the container, or remove the container and install Forgejo again.",
+    },
+    "config_not_found": {
+        "de": "Die Konfigurationsdatei (app.ini) ist im Container {container} nicht zu finden (gesucht: {paths}). Lösung: den Pfad im Container mit `--config <pfad>` angeben.",
+        "en": "The configuration file (app.ini) cannot be found in the container {container} (searched: {paths}). Fix: give its path inside the container with `--config <path>`.",
+    },
+    "git_identity_missing": {
+        "de": "Für {dir} ist keine Git-Identität eingerichtet (Name und E-Mail für Commits). Lösung: Name und E-Mail erfragen und mit `--git-name` und `--git-email` erneut aufrufen; sie gelten nur für dieses Repo.",
+        "en": "No Git identity is set for {dir} (name and email for commits). Fix: ask for name and email and call again with `--git-name` and `--git-email`; they apply to this repository only.",
+    },
     "no_instance": {
         "de": "Keine eingerichtete Instanz gefunden. Zuerst `einrichten` ausführen.",
         "en": "No set-up instance found. Run `setup` first.",
@@ -491,6 +503,50 @@ class Host:
                 res.append({"name": parts[0], "image": parts[1], "kind": kind, "ports": ports})
         return res
 
+    def stopped_containers(self, kinds=("forgejo", "gitea")):
+        out = self.run(self.docker() + ["ps", "-a", "--filter", "status=exited", "--filter", "status=created",
+                                        "--format", "{{.Names}}\t{{.Image}}"], check=False).stdout
+        return [{"name": n, "image": i, "kind": k} for n, i in (line.split("\t", 1) for line in out.splitlines() if "\t" in line)
+                for k in [next((k for k in kinds if k in i), None)] if k]
+
+    def mounts(self, container):
+        """{Ziel im Container: Quelle auf dem Host} der Bind-Mounts und Volumes."""
+        out = self.run(self.docker() + ["inspect", "--format", "{{range .Mounts}}{{.Destination}}\t{{.Source}}\n{{end}}",
+                                        container], check=False).stdout
+        return dict(line.split("\t", 1) for line in out.splitlines() if "\t" in line)
+
+
+DEFAULT_CUSTOM = "/data/gitea"  # GITEA_CUSTOM in den Images von Forgejo und Gitea
+
+
+def locate_config(host, container, given=None):
+    """Pfad der app.ini im Container. Prüft nur, ob Dateien existieren; liest weder sie noch Umgebungswerte außer Pfaden."""
+    def sh(script):
+        return host.run(host.docker() + ["exec", container, "sh", "-c", script], check=False)
+
+    cands = [given] if given else []
+    if not given:
+        for line in sh("ps -o args").stdout.splitlines():
+            m = re.search(r"\b(?:forgejo|gitea)\b.*?\s(?:--config|-c)[=\s]+(\S+)", line)
+            if m:
+                cands.append(m.group(1))
+        env = sh('printf "%s\\n%s\\n" "$GITEA_APP_INI" "$GITEA_CUSTOM"').stdout.split("\n")
+        app_ini, custom = (env + ["", ""])[:2]
+        cands += [p for p in (app_ini, f"{custom or DEFAULT_CUSTOM}/conf/app.ini") if p]
+    cands = list(dict.fromkeys(cands))
+    for path in cands:
+        if sh(f"test -f {shlex.quote(path)}").returncode == 0:
+            return path
+    custom_dir = str(Path(cands[-1]).parent.parent)
+    if not given and sh(f"test -d {shlex.quote(custom_dir)}").returncode != 0:
+        mounts = host.mounts(container)
+        source = next((src for dst, src in sorted(mounts.items(), key=lambda m: -len(m[0]))
+                       if custom_dir == dst or custom_dir.startswith(dst.rstrip("/") + "/")), "?")
+        raise Fail("instance_data_missing", {"container": container, "mounts": mounts, "missing": custom_dir},
+                   container=container, path=custom_dir, source=source)
+    raise Fail("config_not_found", {"container": container, "searched": cands},
+               container=container, paths=", ".join(cands))
+
 
 # --------------------------------------------------------------------------- HTTP
 
@@ -790,12 +846,21 @@ class GiteaFamily:
         self.warnings = []
         self.api = None
         self._tunnel = None
+        self._config = None
 
     # --- Admin-Zugang über die CLI der Plattform
+    def config_path(self):
+        """app.ini im Container; bei `--admin-exec` nur, wenn `--config` angegeben ist."""
+        if self._config is None:
+            self._config = (locate_config(self.host, self.container, self.cfg.get("config")) if self.container
+                            else self.cfg.get("config") or "")
+        return self._config
+
     def cli_run(self, args):
+        config = ["--config", self.config_path()] if self.config_path() else []
         if self.admin_exec:
-            return self.host.run(shlex.split(self.admin_exec) + args)
-        return self.host.run(self.host.docker() + ["exec", "-u", "git", self.container, self.cli] + args)
+            return self.host.run(shlex.split(self.admin_exec) + config + args)
+        return self.host.run(self.host.docker() + ["exec", "-u", "git", self.container, self.cli] + config + args)
 
     def read_file(self, path):
         if not self.container:
@@ -866,7 +931,7 @@ class GiteaFamily:
 
     # --- Einrichtung
     def health(self):
-        text = self.read_file("/data/gitea/conf/app.ini")
+        text = self.read_file(self.config_path()) if self.config_path() else None
         if text is None:
             return {}, [t("w_health_skipped")]
         ini = parse_ini(text)
@@ -1192,6 +1257,16 @@ def cmd_discover(args):
         pass
     add("http://localhost:3000", "default-port")
     found = []
+
+    def check_data(c):
+        if not c.get("container"):
+            return
+        try:
+            locate_config(Host(), c["container"])
+        except Fail as e:
+            if e.code == "instance_data_missing":
+                c.update({"data_missing": True, "message": e.message})
+
     for c in cands.values():
         try:
             plat, version = detect_platform(c["url"])
@@ -1203,6 +1278,8 @@ def cmd_discover(args):
             continue
         if plat:
             c.update({"platform": plat, "version": version})
+            if plat in PLATFORMS:
+                check_data(c)
             found.append(c)
         elif c.get("instance") and load_config(c["instance"]):
             # Eingerichtet, aber per HTTP nicht erkennbar (z. B. interne Zertifizierungsstelle, nur SSH genutzt)
@@ -1351,6 +1428,8 @@ def cmd_setup(args):
             if not container:
                 raise Fail("no_admin_access", platform=PLATFORMS[plat].label)
         cfg.update({"container": container, "admin_exec": admin_exec})
+        if args.config:
+            cfg["config"] = args.config
     if args.operator:
         cfg["operator"] = args.operator
     warnings = list(migrate_notes)
@@ -1682,6 +1761,7 @@ def build_parser():
     s.add_argument("--ca-cert", help="Zertifikat einer internen Zertifizierungsstelle (PEM) / internal CA certificate")
     s.add_argument("--container")
     s.add_argument("--admin-exec")
+    s.add_argument("--config", help="Pfad der app.ini im Container bzw. für `--admin-exec` / app.ini path")
     s.add_argument("--operator")
     s.add_argument("--client")
     s.add_argument("--no-mcp", action="store_true")

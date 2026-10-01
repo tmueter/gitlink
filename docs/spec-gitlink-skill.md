@@ -57,7 +57,7 @@ Das Skript sucht in dieser Reihenfolge:
 3. laufende Docker-Container mit einem Forgejo-Image,
 4. `http://localhost:3000`.
 
-Ein Kandidat gilt als Forgejo-Instanz, wenn `GET /api/v1/version` eine Forgejo-Version liefert. Findet das Skript genau eine Instanz, fährt es fort. Findet es mehrere, fragt Claude, welche gemeint ist. Findet es keine, fragt Claude, ob und wo eine Instanz läuft oder ob der Skill eine installieren soll.
+Ein Kandidat gilt als Forgejo-Instanz, wenn `GET /api/v1/version` eine Forgejo-Version liefert. Bei einem Container prüft das Skript zusätzlich, ob seine Konfigurationsdatei existiert (siehe 4.4). Fehlt mit ihr auch das Datenverzeichnis, kennzeichnet es den Kandidaten mit `data_missing`. Das kommt vor, wenn der Datenordner bei laufendem Container gelöscht wurde: Der Server liefert die Weboberfläche dann weiter aus, das Admin-CLI findet aber keine Konfiguration mehr. Findet das Skript genau eine Instanz, fährt es fort. Findet es mehrere, fragt Claude, welche gemeint ist. Findet es keine, fragt Claude, ob und wo eine Instanz läuft oder ob der Skill eine installieren soll.
 
 ### 4.2 Instanz installieren (nur auf Wunsch)
 
@@ -81,6 +81,7 @@ Das Skript prüft eine gefundene Instanz auf bekannte Schwächen, insbesondere e
 Quelle: „Welchen Zugriff erhält jeder Claude-Client, und wie wird einer widerrufen?“
 
 - Das Skript erzeugt für die Dauer des Laufs einen Admin-Token des Betreibers mit `docker exec -u git <container> forgejo admin user generate-access-token -u <betreiber> --raw`, mit den Scopes `write:admin`, `write:repository`, `write:user` und `write:issue`.
+- Das Skript übergibt dem Admin-CLI die Konfigurationsdatei mit `--config`. Den Pfad sucht es im Container in dieser Reihenfolge: `--config` des Serverprozesses (`ps -o args`), `GITEA_APP_INI`, `$GITEA_CUSTOM/conf/app.ini` mit `/data/gitea` als Standard. Es prüft nur, ob die Datei existiert, und liest dabei keine Umgebungswerte außer diesen Pfaden. Findet es keine, bricht es ab: mit `instance_data_missing`, wenn auch das Datenverzeichnis fehlt, sonst mit `config_not_found`. Der Betreiber kann den Pfad mit `einrichten --config <pfad>` vorgeben; das Skript speichert ihn.
 - Der Token existiert nur im Speicher des Skripts und wird am Ende des Laufs gelöscht, auch wenn der Lauf fehlschlägt. Im Alltag hat Claude keine Admin-Rechte.
 - **[Vorschlag]** Der Token-Name enthält einen Zeitstempel (`gitlink-lauf-<zeitstempel>`). Beim Start löscht das Skript übrig gebliebene Tokens dieses Namensmusters aus abgebrochenen Läufen.
 

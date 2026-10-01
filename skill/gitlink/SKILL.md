@@ -19,6 +19,7 @@ Jeder Aufruf gibt ein JSON-Objekt aus: bei `"ok": true` das Ergebnis in `result`
 - **Eine Frage pro Schritt:** Bündle alles, was du für einen Schritt wissen musst, in eine einzige Rückfrage, und schlage für jeden Punkt einen Standardwert vor, den der Betreiber nur bestätigen muss.
 - **Nur fragen, was das Skript nicht weiß:** Frag nie nach etwas, das `uebersicht` oder `finden` beantwortet.
 - **Knappe Ergebnisse:** Nach jedem Befehl höchstens fünf Zeilen: was passiert ist, jede Warnung sinngemäß, und was der Betreiber jetzt tun muss, falls etwas.
+- **Probleme:** Nenne die Ursache in einem Satz, dann ein bis drei kurze, einfache Lösungen, die naheliegendste zuerst. Steht in der `message` des Skripts schon eine („Lösung: …“), gib sie weiter, statt selbst nachzuforschen. Nichts Zerstörerisches ohne ausdrückliches Ja.
 - **Instanz wählen:** Ist ein Befehl nur auf einer eingerichteten Instanz möglich (laut `uebersicht`), nimm sie und übergib `--instanz`. Frag nur, wenn mehrere passen.
 - **Verzeichnis wählen:** Standard ist das aktuelle Verzeichnis, wenn es noch kein `origin` hat; sonst `<übergeordnetes Verzeichnis>/<repo-name>`.
 
@@ -28,7 +29,7 @@ Rufe `uebersicht` auf. Zeige je Instanz Plattform und Adresse und darunter **nur
 
 ## einrichten / setup
 
-1. `finden --dir <verzeichnis>`. Eine Instanz: weiter. Mehrere: frag, welche. Keine: frag in einer Frage nach der Adresse oder ob Forgejo installiert werden soll ([Sonderfälle](sonderfaelle.md#installation)).
+1. `finden --dir <verzeichnis>`. Eine Instanz: weiter. Mehrere: frag, welche. Keine: frag in einer Frage nach der Adresse oder ob Forgejo installiert werden soll ([Sonderfälle](sonderfaelle.md#installation)). Trägt eine Instanz `data_missing`: [Sonderfälle](sonderfaelle.md#instanz-ohne-daten).
 2. `einrichten --url <url>`; bei GitLab zusätzlich `--plattform gitlab`.
 3. Je nach Ergebnis:
    - `missing_repos` nicht leer (Forgejo/Gitea): frag einmal, welche Repos Claude nutzen darf (Vorschlag: alle), dann `freigeben <repo> …`.

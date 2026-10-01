@@ -332,6 +332,97 @@ class Detection(unittest.TestCase):
         self.assertEqual(gitlink.detect_platform(other), (None, None))
 
 
+class FakeDockerHost:
+    """Steht für `Host`: beantwortet `docker exec … sh -c` und `docker inspect` aus einem nachgebauten Container."""
+
+    def __init__(self, files=(), dirs=(), env=None, args="/usr/local/bin/gitea web", mounts=None, stopped=""):
+        self.files, self.dirs, self.env, self.args = set(files), set(dirs), env or {}, args
+        self.mount_map = mounts or {"/data": "/srv/forgejo/data"}
+        self.stopped = stopped
+        self.calls = []
+
+    def docker(self):
+        return ["docker"]
+
+    def mounts(self, container):
+        return self.mount_map
+
+    def run(self, argv, check=True, **kw):
+        self.calls.append(argv)
+        ok = lambda out="": gitlink.subprocess.CompletedProcess(argv, 0, out, "")  # noqa: E731
+        no = gitlink.subprocess.CompletedProcess(argv, 1, "", "")
+        if argv[1:3] == ["ps", "-a"]:
+            return ok(self.stopped)
+        script = argv[-1]
+        if script == "ps -o args":
+            return ok("PID   USER     TIME  COMMAND\n" + self.args + "\n")
+        if script.startswith("printf"):
+            return ok(f"{self.env.get('GITEA_APP_INI', '')}\n{self.env.get('GITEA_CUSTOM', '')}\n")
+        if script.startswith("test -f "):
+            return ok() if script[8:].strip("'") in self.files else no
+        if script.startswith("test -d "):
+            return ok() if script[8:].strip("'") in self.dirs else no
+        raise AssertionError(argv)
+
+
+class ConfigLookup(unittest.TestCase):
+    def test_default_path_from_gitea_custom(self):
+        h = FakeDockerHost(files={"/data/gitea/conf/app.ini"}, env={"GITEA_CUSTOM": "/data/gitea"})
+        self.assertEqual(gitlink.locate_config(h, "forgejo"), "/data/gitea/conf/app.ini")
+
+    def test_process_args_and_app_ini_win_over_default(self):
+        h = FakeDockerHost(files={"/etc/forgejo/app.ini", "/data/gitea/conf/app.ini"},
+                           args="/usr/local/bin/forgejo web --config /etc/forgejo/app.ini")
+        self.assertEqual(gitlink.locate_config(h, "forgejo"), "/etc/forgejo/app.ini")
+        h = FakeDockerHost(files={"/etc/gitea/app.ini"}, env={"GITEA_APP_INI": "/etc/gitea/app.ini"})
+        self.assertEqual(gitlink.locate_config(h, "gitea"), "/etc/gitea/app.ini")
+
+    def test_deleted_data_folder_is_reported_with_mount_source(self):
+        h = FakeDockerHost(env={"GITEA_CUSTOM": "/data/gitea"})
+        with self.assertRaises(gitlink.Fail) as e:
+            gitlink.locate_config(h, "forgejo")
+        self.assertEqual(e.exception.code, "instance_data_missing")
+        self.assertIn("/srv/forgejo/data", e.exception.message)
+        self.assertIn("backup", e.exception.message.lower())  # Lösungsvorschlag steht in der Meldung
+
+    def test_config_elsewhere_or_wrong_given_path(self):
+        h = FakeDockerHost(dirs={"/data/gitea"})
+        with self.assertRaises(gitlink.Fail) as e:
+            gitlink.locate_config(h, "forgejo")
+        self.assertEqual(e.exception.code, "config_not_found")
+        self.assertIn("--config", e.exception.message)
+        with self.assertRaises(gitlink.Fail) as e:
+            gitlink.locate_config(FakeDockerHost(files={"/data/gitea/conf/app.ini"}), "forgejo", "/x/app.ini")
+        self.assertEqual(e.exception.details["searched"], ["/x/app.ini"])
+
+    def test_cli_passes_found_config(self):
+        h = FakeDockerHost(files={"/etc/forgejo/app.ini"}, env={"GITEA_APP_INI": "/etc/forgejo/app.ini"})
+        a = gitlink.Forgejo({"container": "forgejo"})
+        a.host = h
+        answer, admin_calls = h.run, []
+        h.run = lambda argv, check=True, **kw: (admin_calls.append(argv) or gitlink.subprocess.CompletedProcess(argv, 0, "", "")
+                                                 if "admin" in argv else answer(argv, check, **kw))
+        a.cli_run(["admin", "user", "list"])
+        a.cli_run(["admin", "user", "list"])
+        self.assertEqual(admin_calls[0], ["docker", "exec", "-u", "git", "forgejo", "forgejo",
+                                          "--config", "/etc/forgejo/app.ini", "admin", "user", "list"])
+        self.assertEqual(sum(1 for c in h.calls if c[-1] == "ps -o args"), 1)  # Pfad nur einmal gesucht
+
+
+class DiscoverMissingData(SandboxHome):
+    def test_container_without_data_is_flagged(self):
+        host = FakeDockerHost(env={"GITEA_CUSTOM": "/data/gitea"})
+        host.containers = lambda: [{"name": "forgejo", "ports": {3000: 3000}}]
+        for name, fn in {"Host": lambda ssh_host=None: host,
+                         "detect_platform": lambda url: ("forgejo", "16.0.5")}.items():
+            self.addCleanup(setattr, gitlink, name, getattr(gitlink, name))
+            setattr(gitlink, name, fn)
+        found = gitlink.cmd_discover(type("A", (), {"dir": str(self.home)})())["instances"]
+        c = next(c for c in found if c.get("container") == "forgejo")
+        self.assertTrue(c["data_missing"])
+        self.assertIn("/srv/forgejo/data", c["message"])
+
+
 class InternalCa(SandboxHome):
     """HTTPS mit einem Zertifikat einer eigenen Zertifizierungsstelle, wie bei einer Firmen-PKI."""
 

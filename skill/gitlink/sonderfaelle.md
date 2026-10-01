@@ -6,6 +6,15 @@ Nachschlagewerk zu [SKILL.md](SKILL.md) für seltene Lagen. Die Gesprächsregeln
 
 Nur Forgejo wird installiert; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen. Frag in einer Frage nach Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>` (Standard: `~/forgejo`, Ports 3000/2222). Nenne danach den Pfad aus `result.password_file` und fahre mit `einrichten --url <result.url>` fort. Bei `port_busy` schlag die Ports aus `details.free` vor (`--web-port`, `--ssh-port`).
 
+## Instanz ohne Daten
+
+`data_missing` bei `finden` oder `instance_data_missing` bei `einrichten`: Der Container läuft, aber sein Datenordner ist leer, meist weil er bei laufendem Container gelöscht oder verschoben wurde. Die Weboberfläche kann trotzdem noch antworten. Zeig die `message` und frag in einer Frage nach einem der beiden Wege; schlag (a) vor, wenn es ein Backup gibt, sonst (b):
+
+- (a) Daten aus dem Backup in den genannten Ordner zurückspielen, Container neu starten, `einrichten` wiederholen.
+- (b) Container entfernen (`docker rm -f <container>`; der Ordner bleibt) und Forgejo neu installieren ([Installation](#installation)).
+
+Führe (b) nur nach ausdrücklichem Ja aus.
+
 ## Instanz auf einem anderen Rechner (Forgejo, Gitea)
 
 Hat der Betreiber SSH-Zugang zum Rechner der Instanz: `einrichten --url <adresse auf jenem rechner, meist http://localhost:3000> --ssh-host <host>`. Das Skript arbeitet dann über SSH und einen Tunnel.
@@ -34,6 +43,8 @@ Scheitert HTTPS an einem unbekannten Zertifikat (die Instanz wird dann per HTTP 
 | `repo_not_found` | Prüfe den Namen mit dem Betreiber. |
 | `repo_no_access` | Repo fehlt oder Konto ohne Zugriff; der Betreiber legt es an oder klärt die Rechte. |
 | `confirm_mismatch` | Bestätigung erneut einholen; `--bestaetigen` muss genau den Repo-Namen tragen. |
+| `instance_data_missing` | Siehe [Instanz ohne Daten](#instanz-ohne-daten). |
+| `config_not_found` | Frag nach dem Pfad der `app.ini` im Container (oft in der Compose-Datei zu sehen); `--config`. |
 | `no_admin_access` | Frag nach dem Container (`--container`) oder dem CLI-Aufruf der Plattform (`--admin-exec`). |
 | `ssh_unreachable` | Frag, ob der Zugang (z. B. VPN) steht und wie die interne Adresse lautet (`--ssh-hostname`). |
 | `gitlab_unsupported` | Bei GitLab gibt es nur `einrichten`, `verbinden` und `widerrufen`. |
@@ -43,4 +54,4 @@ Scheitert HTTPS an einem unbekannten Zertifikat (die Instanz wird dann per HTTP 
 | `client_unknown` | Der genannte Client ist unbekannt; zeig `details.clients` und frag erneut. |
 | `auth_proxy` | Siehe [Anmelde-Proxy](#anmelde-proxy). |
 | `port_busy` | Siehe [Installation](#installation). |
-| alle anderen (z. B. `no_docker`, `api_error`, `cmd_error`, `mcp_download`) | Die `message` erklärt die Ursache; gib sie weiter und frag, wie es weitergehen soll. |
+| alle anderen (z. B. `no_docker`, `api_error`, `cmd_error`, `mcp_download`) | Die `message` erklärt die Ursache; gib sie in einem Satz weiter, schlag ein bis zwei einfache Lösungen vor und frag, welche. |
