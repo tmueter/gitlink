@@ -57,7 +57,7 @@ Jedes Issue, das du danach in diesem Repo anlegst, ordnest du dem Meilenstein `r
 
 ## Git-Identität
 
-`git_identity_missing` heißt: Commits im Verzeichnis hätten weder Namen noch E-Mail; das Skript hat noch nichts geändert. Frag in **einer** Frage nach Name und E-Mail, mit `details.suggestion` als Vorschlag, und wiederhole denselben Aufruf mit `--git-name <name> --git-email <mail>`. Das Skript setzt beides nur für dieses Repo.
+`git_identity_missing` heißt: Commits im Verzeichnis hätten keinen Namen oder keine E-Mail; das Skript hat noch nichts geändert. Frag in **einer** Frage nach Name und E-Mail, mit `details.suggestion` als Vorschlag, und wiederhole denselben Aufruf mit `--git-name <name> --git-email <mail>`. Das Skript setzt beides nur für dieses Repo.
 
 ## abhaengigkeit / dependency (Forgejo, Gitea)
 
@@ -85,4 +85,4 @@ Einmal pro Sitzung, nach `einrichten` oder `repo` (nicht bei GitLab), in höchst
 
 Beide Skills startet nur der Betreiber; du kannst sie nicht aufrufen (`disable-model-invocation`). Vor dem ersten Einsatz in einem Repo tippt er einmal `/mattpocock-skills:setup-matt-pocock-skills`. Es kennt Forgejo und Gitea nicht: Bei der Frage nach dem Issue-Tracker wählt er **Other** und gibt diesen Absatz an, den du mit den Werten aus `repo` füllst und ihm zum Einfügen zeigst:
 
-> Issues liegen im {Plattform}-Repo `<eigentümer>/<name>` auf `<url>`. Lies und schreibe sie über den MCP-Server `<mcp-server>`. Ordne jedes neue Issue dem Meilenstein „<name>“ (ID <id>) zu. Blocker setzt `python3 <basisverzeichnis>/gitlink.py abhaengigkeit --repo <eigentümer>/<name> --issue <blockiert> --blockiert-durch <blockierend>`.
+> Issues liegen im <plattform>-Repo `<eigentümer>/<name>` auf `<url>`. Lies und schreibe sie über den MCP-Server `<mcp-server>`. Ordne jedes neue Issue dem Meilenstein „<name>“ (ID <id>) zu. Blocker setzt `python3 <basisverzeichnis>/gitlink.py abhaengigkeit --repo <eigentümer>/<name> --issue <blockiert> --blockiert-durch <blockierend>`.
