@@ -290,6 +290,11 @@ class Cli(SandboxHome):
         for key, texts in gitlink.MSG.items():
             self.assertEqual(set(texts), {"de", "en"}, key)
 
+    def test_progress_messages_are_translated(self):
+        import re
+        source = Path(gitlink.__file__).read_text()
+        self.assertEqual(re.findall(r'\blog\(f?["\']', source), [])  # Text nur über t(), nie fest
+
     def test_parser_flags(self):
         p = gitlink.build_parser()
         self.assertTrue(p.parse_args(["repo", "--name", "x", "--privat"]).private)

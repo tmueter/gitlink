@@ -291,6 +291,7 @@ MSG = {
         "de": "Eine weitere Instanz einrichten (Forgejo, Gitea oder GitLab) oder Forgejo neu installieren.",
         "en": "Set up another instance (Forgejo, Gitea or GitLab) or install Forgejo from scratch.",
     },
+    "log_starting": {"de": "starte Forgejo in {dir}", "en": "starting Forgejo in {dir}"},
     "board_hint": {
         "de": "Lege ein Projektboard an ({url}) und übernimm die Issues des Meilensteins „{milestone}“.",
         "en": "Create a project board ({url}) and add the issues of the milestone \"{milestone}\".",
@@ -1430,7 +1431,7 @@ services:
 """
     private_dir(target)
     write_private(target / "docker-compose.yml", compose_yml)
-    log(f"starte Forgejo in {target}")
+    log(t("log_starting", dir=target))
     run(compose + ["-p", project, "-f", str(target / "docker-compose.yml"), "up", "-d"], timeout=600)
     deadline = time.time() + args.timeout
     while detect_platform(url)[0] != "forgejo":
