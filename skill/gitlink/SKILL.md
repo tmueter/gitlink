@@ -35,7 +35,7 @@ Rufe `uebersicht` auf. Zeige je Instanz Plattform und Adresse und darunter **nur
    - `missing_repos` nicht leer (Forgejo/Gitea): frag einmal, welche Repos Claude nutzen darf (Vorschlag: alle), dann `freigeben <repo> …`.
    - `ssh_key_required` (GitLab): zeig `details.public_key`, `details.title`, den Link `details.add_key_url` und `details.host_key_fingerprints` zum Vergleich mit `<url>/help/instance_configuration`; bitte den Betreiber, den Schlüssel einzutragen und die Fingerprints zu bestätigen. Danach `einrichten` wiederholen. Kommt der Fehler trotz eingetragenem Schlüssel erneut: [Sonderfälle](sonderfaelle.md#gitlab-ssh-port).
    - jeder andere Fehler: [Sonderfälle](sonderfaelle.md#fehlercodes).
-4. Kurz zusammenfassen (Plattform, Konto bzw. Bot, SSH-Alias, MCP-Server), dann [Empfehlung](#empfehlung), außer bei GitLab.
+4. Kurz zusammenfassen (Plattform, Konto bzw. Bot, SSH-Alias, MCP-Server), dann [Empfehlung](#empfehlung), außer bei GitLab. Den MCP-Server hat das Skript schon selbst getestet (`result.mcp_check`: Server, Anzahl Tools, angemeldetes Konto); nenne das Ergebnis in einer Zeile und teste nicht von Hand nach. Seine Tools stehen dir erst nach einem Neustart von Claude Code zur Verfügung. Ein erneutes `einrichten` prüft alles noch einmal, auch den MCP-Server.
 
 ## verbinden / connect
 

@@ -20,6 +20,7 @@ import ipaddress
 import json
 import os
 import platform
+import queue
 import re
 import secrets
 import shlex
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -192,6 +194,14 @@ MSG = {
     "w_restart": {
         "de": "Der MCP-Server `{server}` steht erst nach einem Neustart von Claude Code zur Verfügung.",
         "en": "The MCP server `{server}` is only available after restarting Claude Code.",
+    },
+    "w_mcp_check": {
+        "de": "Der MCP-Server `{server}` antwortet nicht wie erwartet (Schritt {step}: {err}). Lösung: `einrichten` erneut ausführen; hilft das nicht, `{starter}` im Terminal starten und die Fehlermeldung lesen.",
+        "en": "The MCP server `{server}` does not answer as expected (step {step}: {err}). Fix: run `setup` again; if that does not help, start `{starter}` in a terminal and read the error.",
+    },
+    "w_mcp_login": {
+        "de": "Der MCP-Server `{server}` meldet sich als {login} an statt als {bot}. Lösung: {token} löschen und `einrichten` erneut ausführen.",
+        "en": "The MCP server `{server}` logs in as {login} instead of {bot}. Fix: delete {token} and run `setup` again.",
     },
     "w_hostkey_tofu": {
         "de": "Host-Keys von {host}:{port} direkt über das Netz abgefragt und beim ersten Kontakt vertraut (TOFU). Vergleiche die Fingerprints mit {url}; ohne Zugang zum Host der Instanz (`--ssh-host`) geht es nicht sicherer.",
@@ -816,6 +826,91 @@ def mcp_registered(server, starter):
     return (fields.get("Scope", "").strip().startswith("User config")
             and fields.get("Command", "").strip() == str(starter)
             and not fields.get("Args", "").strip())
+
+
+def mcp_check(starter, bot, timeout=30):
+    """Startet den MCP-Server wie Claude Code (stdio) und prüft Handshake, Tools und das angemeldete Konto.
+
+    Liefert {"ok", "server", "tools", "login"} und bei einem Fehler `step` und `error`. stderr des Servers
+    wird verworfen, Antworten werden nur auf diese Felder ausgewertet; so erscheint kein Geheimnis.
+    """
+    res = {"ok": False, "server": None, "tools": 0, "login": None}
+    try:
+        p = subprocess.Popen([str(starter)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, text=True)
+    except OSError as e:
+        return {**res, "step": "start", "error": str(e)}
+    lines = queue.Queue()
+
+    def reader():
+        try:
+            for line in p.stdout:
+                lines.put(line)
+        except (OSError, ValueError):  # Pipe beim Aufräumen geschlossen
+            pass
+        lines.put(None)
+
+    threading.Thread(target=reader, daemon=True).start()
+    deadline = time.time() + timeout
+
+    def call(ident, method, params=None):
+        p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": ident, "method": method, "params": params or {}}) + "\n")
+        p.stdin.flush()
+        while True:
+            try:
+                line = lines.get(timeout=max(0.0, deadline - time.time()))
+            except queue.Empty:
+                raise TimeoutError(f"> {timeout} s") from None
+            if line is None:
+                raise EOFError("server exited")
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if msg.get("id") == ident:
+                if "error" in msg:
+                    raise RuntimeError(str(msg["error"].get("message", msg["error"]))[:200])
+                return msg.get("result") or {}
+
+    step = "initialize"
+    try:
+        info = call(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                      "clientInfo": {"name": NAME, "version": "1"}}).get("serverInfo", {})
+        res["server"] = " ".join(filter(None, (info.get("name"), info.get("version"))))
+        p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+        p.stdin.flush()
+        step = "tools/list"
+        names = [tool.get("name") for tool in call(2, "tools/list").get("tools", [])]
+        res["tools"] = len(names)
+        if not names:
+            raise RuntimeError("no tools")
+        if "get_my_user_info" in names:
+            step = "get_my_user_info"
+            out = call(3, "tools/call", {"name": "get_my_user_info", "arguments": {}})
+            text = "".join(c.get("text", "") for c in out.get("content", []))
+            m = re.search(r'"(?:login|UserName|username)"\s*:\s*"([^"]+)"', text)
+            if out.get("isError"):
+                raise RuntimeError(text[:200])
+            res["login"] = m.group(1) if m else None  # unbekanntes Antwortformat: Login bleibt offen
+            if res["login"] and res["login"] != bot:
+                step = "login"
+                raise RuntimeError(res["login"])
+        res["ok"] = True
+        return res
+    except (OSError, ValueError, RuntimeError, TimeoutError, EOFError) as e:
+        return {**res, "step": step, "error": str(e)}
+    finally:
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        for pipe in (p.stdin, p.stdout):
+            try:
+                pipe.close()
+            except OSError:
+                pass
 
 
 def register_mcp(server, starter):
@@ -1459,7 +1554,7 @@ def cmd_setup(args):
         ensure_client_token(a, inst, cfg, client)
         missing = a.missing_repos()
     warnings += a.warnings
-    server = None
+    server = check = None
     if not args.no_mcp:
         body, notes = a.mcp_setup(inst)
         warnings += notes
@@ -1467,12 +1562,18 @@ def cmd_setup(args):
             starter, starter_changed = write_starter(inst, cfg, body)
             server, registration_changed = register_mcp(alias(inst), starter)
             cfg["mcp_server"] = server
+            check = mcp_check(starter, BOT)
+            if check.get("step") == "login":
+                warnings.append(t("w_mcp_login", server=server, login=check["login"], bot=BOT,
+                                  token=inst_dir(inst) / "token"))
+            elif not check["ok"]:
+                warnings.append(t("w_mcp_check", server=server, step=check["step"], err=check["error"], starter=starter))
             if starter_changed or registration_changed or notes:
                 warnings.append(t("w_restart", server=server))
     save_config(inst, cfg)
     return {"instance": inst, "url": url, "platform": plat, "operator": cfg["operator"], "bot": BOT,
             "client": client, "ssh_alias": cfg["ssh_alias"], "host_keys_pinned": len(keys),
-            "mcp_server": server, "missing_repos": missing}, warnings
+            "mcp_server": server, "mcp_check": check, "missing_repos": missing}, warnings
 
 
 def cmd_grant(args):

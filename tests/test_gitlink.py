@@ -166,6 +166,53 @@ class McpRegistration(SandboxHome):
         self.assertTrue(gitlink.write_starter("x", cfg, "exec /bin/b")[1])
 
 
+class McpCheck(SandboxHome):
+    """Ein nachgebauter MCP-Server über stdio, wie Claude Code ihn startet."""
+
+    SERVER = '''#!{python}
+import json, sys, time
+mode = {mode!r}
+if mode == "silent":
+    time.sleep(30)
+if mode == "crash":
+    sys.exit(1)
+for line in sys.stdin:
+    msg = json.loads(line)
+    if "id" not in msg:
+        continue
+    if msg["method"] == "initialize":
+        sys.stdout.write(json.dumps({{"jsonrpc": "2.0", "method": "notifications/message", "params": {{}}}}) + "\\n")
+        res = {{"serverInfo": {{"name": "Fake MCP", "version": "1.0"}}}}
+    elif msg["method"] == "tools/list":
+        res = {{"tools": [{{"name": "get_my_user_info"}}, {{"name": "get_repo"}}]}}
+    else:
+        res = {{"content": [{{"type": "text", "text": json.dumps({{"Result": {{"login": {login!r}, "login_name": "x"}}}})}}]}}
+    sys.stdout.write(json.dumps({{"jsonrpc": "2.0", "id": msg["id"], "result": res}}) + "\\n")
+    sys.stdout.flush()
+'''
+
+    def starter(self, mode="ok", login="claude-bot"):
+        path = self.home / f"start-{mode}"
+        path.write_text(self.SERVER.format(python=sys.executable, mode=mode, login=login))
+        path.chmod(0o700)
+        return path
+
+    def test_healthy_server(self):
+        self.assertEqual(gitlink.mcp_check(self.starter(), "claude-bot"),
+                         {"ok": True, "server": "Fake MCP 1.0", "tools": 2, "login": "claude-bot"})
+
+    def test_wrong_login_crash_and_timeout(self):
+        res = gitlink.mcp_check(self.starter(login="dreamer"), "claude-bot")
+        self.assertEqual((res["ok"], res["step"], res["login"]), (False, "login", "dreamer"))
+        res = gitlink.mcp_check(self.starter("crash"), "claude-bot")
+        self.assertEqual((res["ok"], res["step"]), (False, "initialize"))
+        res = gitlink.mcp_check(self.starter("silent"), "claude-bot", timeout=1)
+        self.assertEqual((res["ok"], res["step"]), (False, "initialize"))
+        self.assertIn("1 s", res["error"])
+        res = gitlink.mcp_check(self.home / "fehlt", "claude-bot")
+        self.assertEqual(res["step"], "start")
+
+
 class LocalDirBlockers(SandboxHome):
     REMOTE = "gitlink-x:dreamer/probe.git"
 

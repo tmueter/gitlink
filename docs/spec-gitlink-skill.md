@@ -110,6 +110,7 @@ Quelle: „Wie spricht Claude jenseits von Git mit der Instanz?“, Recherche in
 - Pro Instanz gibt es einen MCP-Server-Eintrag, registriert mit `claude mcp add --scope user gitlink-<instanz> -- ~/.config/gitlink/<instanz>/start-mcp`.
 - Der Starter liest den Token aus der Datei, übergibt ihn als `FORGEJO_ACCESS_TOKEN` und startet forgejo-mcp mit `--url`. Bei einem Client auf einem anderen Rechner öffnet er vorher den SSH-Tunnel (siehe Abschnitt 7).
 - Das Skript installiert forgejo-mcp als Binary aus den Releases des Projekts nach `~/.local/bin`, falls es fehlt, und prüft die SHA-256-Prüfsumme gegen die Prüfsummendatei des Releases. Eine cosign-Signaturprüfung findet nicht statt; das Skript weist darauf hin.
+- Am Ende testet das Skript den Server selbst, weil seine Tools in der laufenden Claude-Sitzung erst nach einem Neustart erscheinen. Es startet den Starter wie Claude Code über stdio, schickt `initialize` und `tools/list` und ruft `get_my_user_info` auf. Das Ergebnis steht in `mcp_check` (Server und Version, Anzahl der Tools, angemeldetes Konto). Meldet sich ein anderes Konto als das Bot-Konto an oder antwortet der Server nicht binnen 30 Sekunden, gibt es eine Warnung mit Lösungsvorschlag. stderr des Servers verwirft das Skript, damit kein Geheimnis in die Ausgabe gelangt. Einen eigenen Unterbefehl dafür gibt es nicht: Ein erneutes `einrichten` prüft alles, auch den MCP-Server.
 
 ### 4.9 Abgleich bestehender Repositories
 
