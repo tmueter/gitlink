@@ -78,4 +78,11 @@ Eine Frage: „Repo `<repo>` samt Issues endgültig löschen? Lokales Verzeichni
 
 ## Empfehlung
 
-Einmal pro Sitzung, nach `einrichten` oder `repo` (nicht bei GitLab): Ist `mattpocock-skills` laut `claude plugin list` nicht installiert, empfiehl die [Skills von Matt Pocock](https://github.com/mattpocock/skills), besonders `/wayfinder`, und biete `claude plugins install mattpocock-skills` an (verfügbar nach Neustart; einmalig `/mattpocock-skills:setup-matt-pocock-skills`). Ist es installiert, frag, ob der Betreiber mit `/wayfinder` ein Vorhaben planen will, und rufe dann `mattpocock-skills:wayfinder` mit seiner Idee auf.
+Einmal pro Sitzung, nach `einrichten` oder `repo` (nicht bei GitLab), in höchstens drei Zeilen. [`wayfinder`](https://github.com/mattpocock/skills/blob/main/docs/engineering/wayfinder.md) plant ein Vorhaben, das größer ist als eine Sitzung, als Karte von Entscheidungs-Issues im Repo.
+
+- `mattpocock-skills` laut `claude plugin list` nicht installiert: empfiehl die [Skills von Matt Pocock](https://github.com/mattpocock/skills), besonders `wayfinder`, und biete `claude plugins install mattpocock-skills` an (verfügbar nach einem Neustart).
+- Installiert: sag, dass der Betreiber ein großes Vorhaben mit `/mattpocock-skills:wayfinder` planen kann.
+
+Beide Skills startet nur der Betreiber; du kannst sie nicht aufrufen (`disable-model-invocation`). Vor dem ersten Einsatz in einem Repo tippt er einmal `/mattpocock-skills:setup-matt-pocock-skills`. Es kennt Forgejo und Gitea nicht: Bei der Frage nach dem Issue-Tracker wählt er **Other** und gibt diesen Absatz an, den du mit den Werten aus `repo` füllst und ihm zum Einfügen zeigst:
+
+> Issues liegen im {Plattform}-Repo `<eigentümer>/<name>` auf `<url>`. Lies und schreibe sie über den MCP-Server `<mcp-server>`. Ordne jedes neue Issue dem Meilenstein „<name>“ (ID <id>) zu. Blocker setzt `python3 <basisverzeichnis>/gitlink.py abhaengigkeit --repo <eigentümer>/<name> --issue <blockiert> --blockiert-durch <blockierend>`.

@@ -66,9 +66,9 @@ In Claude Code genügt eine Aufforderung in eigenen Worten, zum Beispiel „Rich
 | `/gitlink löschen` bzw. `/gitlink delete` | Löscht ein Repository nach ausdrücklicher Bestätigung, auf Wunsch samt verbundenem lokalem Verzeichnis. Das Verzeichnis wird nur gelöscht, wenn es auf dieses Repository zeigt und keine ungesicherten Änderungen oder ungepushten Commits enthält. |
 | `/gitlink widerrufen` bzw. `/gitlink revoke` | Entzieht einem einzelnen Claude-Client den Zugriff, indem Token und SSH-Schlüssel gelöscht werden. Andere Clients bleiben unberührt. |
 
-Am Ende von `einrichten` und `repo` empfiehlt der Skill die [Skills von Matt Pocock](https://github.com/mattpocock/skills), bietet an, sie als Plugin zu installieren, und fragt, ob ein Vorhaben mit `/wayfinder` geplant werden soll.
+Am Ende von `einrichten` und `repo` empfiehlt der Skill die [Skills von Matt Pocock](https://github.com/mattpocock/skills) und bietet an, sie als Plugin zu installieren. Ist das Plugin da, weist er auf [`wayfinder`](https://github.com/mattpocock/skills/blob/main/docs/engineering/wayfinder.md) hin, das große Vorhaben als Karte von Entscheidungs-Issues plant. `/mattpocock-skills:wayfinder` und das vorher einmal je Repo nötige `/mattpocock-skills:setup-matt-pocock-skills` startest du selbst; Claude kann sie nicht aufrufen. Weil das Setup Forgejo und Gitea nicht kennt, gibt der Skill dir einen fertigen Absatz für die Tracker-Option „Other“ mit.
 
-Wird der MCP-Server neu registriert oder geändert, muss Claude Code einmal neu gestartet werden; der Skill sagt dann Bescheid. Alle Unterbefehle lassen sich gefahrlos wiederholen; sie legen nur an, was fehlt.
+`einrichten` testet den MCP-Server am Ende selbst (Verbindung, Tools, angemeldetes Konto). Wird er neu registriert oder geändert, muss Claude Code einmal neu gestartet werden, bevor Claude seine Tools nutzen kann; der Skill sagt dann Bescheid. Alle Unterbefehle lassen sich gefahrlos wiederholen; sie legen nur an, was fehlt.
 
 Ohne Unterbefehl (`/gitlink`) zeigt der Skill die eingerichteten Instanzen und bietet je Instanz nur die Befehle an, die auf ihrer Plattform möglich sind, jeweils mit einer kurzen Erklärung.
 
