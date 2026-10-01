@@ -65,6 +65,7 @@ Quellen: „Wie installiert der Skill Forgejo, wenn keine Instanz läuft?“, �
 
 - Installationsweg ist Docker Compose mit dem rootful Image `codeberg.org/forgejo/forgejo:16`. Docker muss vorhanden sein. Fehlt Docker, bricht der Skill mit einer klaren Meldung ab.
 - Das Verzeichnis ist `~/forgejo`. Die Ports sind 3000 für Web und 2222 für SSH. Nur wenn ein Port belegt ist, fragt Claude nach einem anderen.
+- Gestoppte Container mit Forgejo- oder Gitea-Image meldet das Skript vor dem Start als Warnung, samt ihrer Datenordner, und ändert nichts daran. Einen Datenordner ohne Container erkennt es nicht.
 - Das Skript startet Compose mit dem eigenen Projektnamen `gitlink-<instanz>` und bricht ab, wenn dieses Projekt schon existiert. Ohne eigenen Namen leitet Compose ihn aus dem Verzeichnisnamen ab und würde fremde Container desselben Projekts neu erzeugen.
 - Die Compose-Datei setzt `FORGEJO__security__INSTALL_LOCK=true` und einen vom Skript erzeugten, zufälligen `FORGEJO__security__SECRET_KEY`. Ein leerer `SECRET_KEY` ist ausgeschlossen, weil Forgejo sonst stillschweigend einen öffentlich bekannten Standardschlüssel verwendet.
 - Den SSH-Port für Clone-URLs setzt das Skript über `FORGEJO__server__SSH_PORT`, nicht über die Template-Variable `SSH_PORT`, weil diese auch den `sshd` im Container verschiebt.

@@ -4,7 +4,7 @@ Nachschlagewerk zu [SKILL.md](SKILL.md) für seltene Lagen. Die Gesprächsregeln
 
 ## Installation
 
-Nur Forgejo wird installiert; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen. Frag in einer Frage nach Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>` (Standard: `~/forgejo`, Ports 3000/2222). Nenne danach den Pfad aus `result.password_file` und fahre mit `einrichten --url <result.url>` fort. Bei `port_busy` schlag die Ports aus `details.free` vor (`--web-port`, `--ssh-port`).
+Nur Forgejo wird installiert; Gitea und GitLab bedient der Skill nur, wenn sie schon laufen. Frag in einer Frage nach Benutzername und E-Mail des Betreiber-Kontos, dann `installieren --operator <name> --email <mail>` (Standard: `~/forgejo`, Ports 3000/2222). Nenne danach den Pfad aus `result.password_file` und fahre mit `einrichten --url <result.url>` fort. Bei `port_busy` schlag die Ports aus `details.free` vor (`--web-port`, `--ssh-port`). Meldet eine Warnung alte, gestoppte Container mit Daten, gib sie in einem Satz weiter; aufräumen nur auf Wunsch.
 
 ## Instanz ohne Daten
 

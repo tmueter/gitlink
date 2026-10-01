@@ -465,6 +465,19 @@ class ConfigLookup(unittest.TestCase):
         self.assertEqual(sum(1 for c in h.calls if c[-1] == "ps -o args"), 1)  # Pfad nur einmal gesucht
 
 
+class Leftovers(unittest.TestCase):
+    def test_stopped_containers_are_reported_not_touched(self):
+        FakeDockerHost.stopped_containers = gitlink.Host.stopped_containers
+        self.addCleanup(delattr, FakeDockerHost, "stopped_containers")
+        h = FakeDockerHost(stopped="alt-forgejo\tcodeberg.org/forgejo/forgejo:16\nweb\tnginx:1\n")
+        warnings = gitlink.leftover_warnings(h)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("alt-forgejo", warnings[0])
+        self.assertIn("/srv/forgejo/data", warnings[0])
+        self.assertEqual([c for c in h.calls if "rm" in c], [])
+        self.assertEqual(gitlink.leftover_warnings(FakeDockerHost()), [])
+
+
 class DiscoverMissingData(SandboxHome):
     def test_container_without_data_is_flagged(self):
         host = FakeDockerHost(env={"GITEA_CUSTOM": "/data/gitea"})

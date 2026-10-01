@@ -72,8 +72,12 @@ MSG = {
         "en": "The directory {dir} already contains an installation.",
     },
     "container_exists": {
-        "de": "Ein Container bzw. Compose-Projekt namens {name} existiert bereits.",
-        "en": "A container or Compose project named {name} already exists.",
+        "de": "Ein Container bzw. Compose-Projekt namens {name} existiert bereits. Lösung: einen anderen Namen mit `--container` wählen oder den alten Container entfernen (`docker rm -f {name}`; sein Datenordner bleibt).",
+        "en": "A container or Compose project named {name} already exists. Fix: choose another name with `--container` or remove the old container (`docker rm -f {name}`; its data folder stays).",
+    },
+    "w_leftover": {
+        "de": "Alte {kind}-Daten gefunden: Container {name} (gestoppt), Daten in {dirs}. Nichts daran geändert. Brauchst du sie nicht mehr: `docker rm {name}` und den Ordner löschen.",
+        "en": "Old {kind} data found: container {name} (stopped), data in {dirs}. Nothing was changed. If you no longer need it: `docker rm {name}` and delete the folder.",
     },
     "start_timeout": {
         "de": "Forgejo ist nach {sec} Sekunden unter {url} nicht erreichbar.",
@@ -1389,6 +1393,16 @@ def cmd_discover(args):
     return {"instances": found}
 
 
+def leftover_warnings(host):
+    """Hinweise auf gestoppte Forgejo-/Gitea-Container und ihre Datenordner; ändert nichts."""
+    out = []
+    for c in host.stopped_containers():
+        mounts = host.mounts(c["name"])
+        dirs = [src for dst, src in mounts.items() if dst == "/data" or dst.startswith("/data/")] or list(mounts.values())
+        out.append(t("w_leftover", kind=c["kind"].capitalize(), name=c["name"], dirs=", ".join(dirs) or "-"))
+    return out
+
+
 def cmd_install(args):
     host = Host()
     compose = host.compose()
@@ -1402,6 +1416,7 @@ def cmd_install(args):
             free = [p for p in range(port + 1, port + 200) if port_free(p)][:3]
             raise Fail("port_busy", {"port": port, "free": free}, port=port, free=", ".join(map(str, free)))
     inst = valid_name(args.instanz or f"localhost-{args.web_port}")
+    warnings = leftover_warnings(host)
     url = f"http://localhost:{args.web_port}"
     # Eigener Projektname: Compose leitet ihn sonst aus dem Verzeichnisnamen ab und würde fremde
     # Container desselben Projekts (z. B. ein anderes Verzeichnis namens `forgejo`) neu erzeugen.
@@ -1454,7 +1469,7 @@ services:
                        "compose_dir": str(target), "compose_project": project,
                        "web_port": args.web_port, "operator": args.operator})
     return {"instance": inst, "url": url, "platform": "forgejo", "operator": args.operator,
-            "password_file": str(pw_file), "compose_file": str(target / "docker-compose.yml")}
+            "password_file": str(pw_file), "compose_file": str(target / "docker-compose.yml")}, warnings
 
 
 def ensure_client_key(a, inst, client):
