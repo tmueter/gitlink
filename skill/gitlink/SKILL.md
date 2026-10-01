@@ -42,7 +42,7 @@ Rufe `uebersicht` auf. Zeige je Instanz Plattform und Adresse und darunter **nur
 Verbindet ein Verzeichnis mit einem bestehenden Repo. Bei Forgejo/Gitea trägt das Skript den Bot dabei selbst ein.
 
 1. Frag in einer Frage nach dem Repo (`eigentümer/name`, bei GitLab auch `gruppe/…/name`) und schlag das Verzeichnis vor.
-2. `verbinden --repo <pfad> --dir <verzeichnis>`.
+2. `verbinden --repo <pfad> --dir <verzeichnis>`. Bei `git_identity_missing`: siehe [Git-Identität](#git-identität).
 
 **Bei GitLab gilt danach:** Du leistest nur Hilfestellung. `git commit` und `git push` nur auf ausdrückliche Anforderung, keine Änderungen auf GitLab selbst. Die Regel steht auch in der `CLAUDE.md` des Verzeichnisses.
 
@@ -50,10 +50,14 @@ Verbindet ein Verzeichnis mit einem bestehenden Repo. Bei Forgejo/Gitea trägt d
 
 1. `orgs` aufrufen.
 2. **Eine** Frage: Name (falls nicht genannt), Sichtbarkeit (Vorschlag: privat), Eigentümer nur wenn `orgs` nicht leer, Verzeichnis als Vorschlag.
-3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <verzeichnis>`. Bei `repo_exists` frag, ob das bestehende Repo eingerichtet werden soll (`--existing-ok`).
-4. Gib `result.board_instruction` weiter, dann [Empfehlung](#empfehlung).
+3. `repo --name <name> --privat|--oeffentlich [--owner <org>] --dir <verzeichnis>`. Bei `repo_exists` frag, ob das bestehende Repo eingerichtet werden soll (`--existing-ok`). Bei `git_identity_missing`: siehe [Git-Identität](#git-identität).
+4. Ist `result.initial_commit_pending` wahr, biete an, die `CLAUDE.md` als ersten Commit auf `main` zu pushen (Vorschlag: ja). Gib `result.board_instruction` weiter, dann [Empfehlung](#empfehlung).
 
 Jedes Issue, das du danach in diesem Repo anlegst, ordnest du dem Meilenstein `result.milestone_id` zu (steht auch in der `CLAUDE.md`).
+
+## Git-Identität
+
+`git_identity_missing` heißt: Commits im Verzeichnis hätten weder Namen noch E-Mail; das Skript hat noch nichts geändert. Frag in **einer** Frage nach Name und E-Mail, mit `details.suggestion` als Vorschlag, und wiederhole denselben Aufruf mit `--git-name <name> --git-email <mail>`. Das Skript setzt beides nur für dieses Repo.
 
 ## abhaengigkeit / dependency (Forgejo, Gitea)
 

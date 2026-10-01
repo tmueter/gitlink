@@ -25,6 +25,9 @@ class SandboxHome(unittest.TestCase):
         self._old_home = os.environ.get("HOME")
         os.environ["HOME"] = self._tmp.name
         self.home = Path(self._tmp.name)
+        for name, value in (("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_GLOBAL", None)):  # keine fremde Git-Identität
+            self.addCleanup(lambda n=name, v=os.environ.get(name): os.environ.pop(n, None) if v is None else os.environ.__setitem__(n, v))
+            os.environ.pop(name, None) if value is None else os.environ.__setitem__(name, value)
 
     def tearDown(self):
         os.environ["HOME"] = self._old_home
@@ -315,7 +318,8 @@ class Detection(unittest.TestCase):
         gitlink.save_config("fj", {"url": "http://localhost:3000", "platform": "forgejo", "ssh_alias": "gitlink-fj"})
         buf = io.StringIO()
         with redirect_stdout(buf):
-            gitlink.main(["--lang", "de", "verbinden", "--repo", "d/r", "--dir", str(Path(tmp.name) / "w")])
+            gitlink.main(["--lang", "de", "verbinden", "--repo", "d/r", "--dir", str(Path(tmp.name) / "w"),
+                          "--git-name", "T", "--git-email", "t@t"])
         out = json.loads(buf.getvalue())
         self.assertTrue(out["result"]["bot_granted"])
         self.assertEqual(calls, [("get", "d/r"), ("grant", "d/r")])
@@ -423,6 +427,77 @@ class DiscoverMissingData(SandboxHome):
         self.assertIn("/srv/forgejo/data", c["message"])
 
 
+class RepoIdentity(SandboxHome):
+    """`repo` fragt nach einer Git-Identität, bevor es etwas anlegt, und meldet den ausstehenden ersten Commit."""
+
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        outer = self
+
+        class FakeAdapter:
+            warnings, operator, label, name = [], "dreamer", "Forgejo", "forgejo"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                pass
+
+            def user_info(self, name):
+                return {"name": "Dreamer", "email": "d@example.org"}
+
+            def owners(self):
+                return []
+
+            def get_repo(self, full):
+                return None
+
+            def create_repo(self, owner, name, private):
+                outer.calls.append("create")
+                return {"private": private}
+
+            def grant(self, full):
+                pass
+
+            def ensure_milestone(self, full, title):
+                return {"id": 1, "title": title}
+
+            def board_url(self, full):
+                return "http://x/projects/new"
+
+            def repo_view(self, repo):
+                return repo
+
+        self.addCleanup(setattr, gitlink, "adapter", gitlink.adapter)
+        gitlink.adapter = lambda cfg, op=None: FakeAdapter()
+        gitlink.save_config("fj", {"url": "http://localhost:3000", "platform": "forgejo", "ssh_alias": "gitlink-fj"})
+
+    def cli(self, *argv):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            gitlink.main(["--lang", "de", "repo", "--name", "p", "--privat", "--dir", str(self.home / "p")] + list(argv))
+        return json.loads(buf.getvalue())
+
+    def test_missing_identity_stops_before_creating(self):
+        out = self.cli()
+        self.assertEqual(out["error"], "git_identity_missing")
+        self.assertEqual(out["details"]["suggestion"], {"name": "Dreamer", "email": "d@example.org"})
+        self.assertEqual(self.calls, [])
+        out = self.cli("--git-name", "Dreamer", "--git-email", "d@example.org")
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["result"]["git_identity"], {"name": "Dreamer", "email": "d@example.org"})
+        self.assertTrue(out["result"]["initial_commit_pending"])
+        self.assertEqual(self.calls, ["create"])
+
+    def test_global_identity_is_enough(self):
+        gitlink.run(["git", "config", "--global", "user.name", "G"])
+        gitlink.run(["git", "config", "--global", "user.email", "g@g"])
+        out = self.cli()
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["result"]["git_identity"], {"name": "G", "email": "g@g"})
+
+
 class InternalCa(SandboxHome):
     """HTTPS mit einem Zertifikat einer eigenen Zertifizierungsstelle, wie bei einer Firmen-PKI."""
 
@@ -512,7 +587,11 @@ class GitLabAccount(SandboxHome):
         self.setup()
         work = self.home / "work"
         out = self.cli("verbinden", "--repo", "team/app", "--dir", str(work))
+        self.assertEqual((out["error"], out["details"]["suggestion"]["name"]), ("git_identity_missing", "tmueter"))
+        self.assertFalse(work.exists())  # vor jeder Änderung abgebrochen
+        out = self.cli("verbinden", "--repo", "team/app", "--dir", str(work), "--git-name", "T M", "--git-email", "t@m")
         self.assertTrue(out["ok"])
+        self.assertEqual(gitlink.git_identity(work), {"name": "T M", "email": "t@m"})
         self.assertEqual(gitlink.run(["git", "-C", str(work), "remote", "get-url", "origin"]).stdout.strip(),
                          "gitlink-gitlab-example-org-443:team/app.git")
         md = (work / "CLAUDE.md").read_text()
@@ -552,7 +631,7 @@ class GitLabAccount(SandboxHome):
         self.user = "tmueter"
         self.setup()
         self.user = None
-        out = self.cli("verbinden", "--repo", "team/app", "--dir", str(self.home / "w"))
+        out = self.cli("verbinden", "--repo", "team/app", "--dir", str(self.home / "w"), "--git-name", "T", "--git-email", "t@t")
         self.assertEqual(out["error"], "repo_no_access")
 
     def test_other_commands_are_refused_and_revoke_is_local(self):

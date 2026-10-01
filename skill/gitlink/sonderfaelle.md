@@ -40,6 +40,7 @@ Scheitert HTTPS an einem unbekannten Zertifikat (die Instanz wird dann per HTTP 
 | `operator_ambiguous` | Frag, welches Admin-Konto aus `details.admins` der Betreiber ist; `--operator`. |
 | `owner_required` | Frag nach dem Eigentümer (Betreiber oder `details.orgs`); `--owner`. |
 | `repo_exists` | Frag, ob das bestehende Repo eingerichtet werden soll; `--existing-ok`. |
+| `git_identity_missing` | Siehe [Git-Identität](SKILL.md#git-identität). |
 | `repo_not_found` | Prüfe den Namen mit dem Betreiber. |
 | `repo_no_access` | Repo fehlt oder Konto ohne Zugriff; der Betreiber legt es an oder klärt die Rechte. |
 | `confirm_mismatch` | Bestätigung erneut einholen; `--bestaetigen` muss genau den Repo-Namen tragen. |

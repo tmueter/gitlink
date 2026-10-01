@@ -996,6 +996,11 @@ class GiteaFamily:
     def owners(self):
         return [o["username"] for o in self.api.paged("/user/orgs")]
 
+    def user_info(self, name):
+        """Name und E-Mail eines Kontos, als Vorschlag für die Git-Identität."""
+        user = self.api.call("GET", f"/users/{name}")[1] or {}
+        return {"name": user.get("full_name") or user.get("login") or name, "email": user.get("email") or None}
+
     def missing_repos(self):
         owners = {self.operator, *self.owners()}
         missing = []
@@ -1487,11 +1492,37 @@ def cmd_orgs(args):
     return {"instance": inst, "platform": cfg.get("platform", "forgejo"), "operator": a.operator, "orgs": orgs}, notes + a.warnings
 
 
+def git_identity(workdir):
+    """{"name", "email"} der Git-Konfiguration, die für Commits in `workdir` gilt; None, wenn eines fehlt."""
+    own = workdir.is_dir() and run(["git", "-C", str(workdir), "rev-parse", "--show-toplevel"],
+                                   check=False).stdout.strip() == str(workdir)
+    base = ["git", "-C", str(workdir) if own else "/"]  # außerhalb eines eigenen Repos: nur global/system
+    ident = {k: run(base + ["config", "--get", f"user.{k}"], check=False).stdout.strip() for k in ("name", "email")}
+    return ident if all(ident.values()) else None
+
+
+def require_identity(args, workdir, suggestion):
+    """Bricht vor jeder Änderung ab, wenn Commits in `workdir` keine Identität hätten; `suggestion` ist eine Funktion."""
+    if not (args.git_name and args.git_email) and not git_identity(workdir):
+        raise Fail("git_identity_missing", {"dir": str(workdir), "suggestion": suggestion()}, dir=str(workdir))
+
+
+def set_identity(args, workdir):
+    for key, value in (("name", args.git_name), ("email", args.git_email)):
+        if value:
+            run(["git", "-C", str(workdir), "config", f"user.{key}", value])
+
+
+def has_commits(workdir):
+    return run(["git", "-C", str(workdir), "rev-parse", "--verify", "-q", "HEAD"], check=False).returncode == 0
+
+
 def cmd_repo(args):
     warnings = migrate_legacy()
     inst, cfg = pick_instance(args.instanz)
     workdir = Path(args.dir).resolve()
     with adapter(cfg) as a:
+        require_identity(args, workdir, lambda: a.user_info(a.operator))
         owner = args.owner
         if not owner:
             orgs = a.owners()
@@ -1518,6 +1549,7 @@ def cmd_repo(args):
         run(["git", "-C", str(workdir), "remote", "add", "origin", remote])
     elif current.stdout.strip() != remote:
         warnings.append(t("w_remote_conflict", current=current.stdout.strip(), wanted=remote))
+    set_identity(args, workdir)
     server = cfg.get("mcp_server") or alias(inst)
     md = write_md_note(workdir, t("claude_md", platform=a.label, repo=full, inst=inst, server=server,
                                   milestone=milestone["title"], mid=milestone["id"]))
@@ -1525,7 +1557,8 @@ def cmd_repo(args):
     save_config(inst, cfg)
     return {"instance": inst, "platform": a.name, "repo": full, "created": created, **a.repo_view(repo),
             "ssh_remote": remote, "milestone": milestone["title"], "milestone_id": milestone["id"],
-            "claude_md": str(md), "board_instruction": t("board_hint", url=board, milestone=milestone["title"])}, warnings
+            "claude_md": str(md), "git_identity": git_identity(workdir), "initial_commit_pending": not has_commits(workdir),
+            "board_instruction": t("board_hint", url=board, milestone=milestone["title"])}, warnings
 
 
 def cmd_archive(args):
@@ -1670,11 +1703,14 @@ def cmd_connect(args):
     granted = False
     if cfg.get("platform", "forgejo") in PLATFORMS:  # Bot eintragen, sonst hätte er keinen Zugriff
         with adapter(cfg) as a:
+            require_identity(args, workdir, lambda: a.user_info(a.operator))
             if a.get_repo(args.repo) is None:
                 raise Fail("repo_not_found", repo=args.repo)
             a.grant(args.repo)
             granted = True
         notes += a.warnings
+    else:
+        require_identity(args, workdir, lambda: {"name": cfg.get("account"), "email": None})
     ok, err = remote_access(remote)
     if not ok:
         raise Fail("repo_no_access", {"remote": remote}, remote=remote, err=err)
@@ -1686,6 +1722,7 @@ def cmd_connect(args):
         run(["git", "-C", str(workdir), "remote", "add", "origin", remote])
     elif current.stdout.strip() != remote:
         notes.append(t("w_remote_conflict", current=current.stdout.strip(), wanted=remote))
+    set_identity(args, workdir)
     plat = cfg.get("platform", "forgejo")
     if plat == "gitlab":
         note = t("gitlab_md", repo=args.repo, inst=inst, account=cfg.get("account", "?"), alias=cfg["ssh_alias"])
@@ -1733,6 +1770,10 @@ def build_parser():
 
     def inst_arg(sp):
         sp.add_argument("--instanz", "--instance", dest="instanz")
+
+    def identity_args(sp):
+        sp.add_argument("--git-name", help="Git-Name für Commits in diesem Repo / Git name for this repository")
+        sp.add_argument("--git-email", help="Git-E-Mail für Commits in diesem Repo / Git email for this repository")
 
     u = sub.add_parser("uebersicht", aliases=["overview"], help="eingerichtete Instanzen und mögliche Befehle / set-up instances and possible commands")
     u.set_defaults(fn=cmd_overview)
@@ -1785,6 +1826,7 @@ def build_parser():
     r.add_argument("--owner")
     r.add_argument("--dir", default=".")
     r.add_argument("--existing-ok", action="store_true")
+    identity_args(r)
     inst_arg(r)
     r.set_defaults(fn=cmd_repo)
 
@@ -1811,6 +1853,7 @@ def build_parser():
     v = sub.add_parser("verbinden", aliases=["connect"], help="Verzeichnis mit bestehendem Repo verbinden / connect directory to existing repo")
     v.add_argument("--repo", required=True, help="eigentümer/name bzw. gruppe/…/name")
     v.add_argument("--dir", default=".")
+    identity_args(v)
     inst_arg(v)
     v.set_defaults(fn=cmd_connect)
 
