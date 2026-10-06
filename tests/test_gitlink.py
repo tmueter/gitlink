@@ -245,6 +245,50 @@ class LocalDirBlockers(SandboxHome):
         self.assertEqual(gitlink.local_dir_blockers(plain, self.REMOTE), [gitlink.t("r_not_git")])
 
 
+class ClientToken(SandboxHome):
+    """ensure_client_token behält gültige Tokens nur, wenn ihnen kein Scope fehlt."""
+
+    class FakeAdapter:
+        client_scopes = gitlink.GiteaFamily.client_scopes
+
+        def __init__(self, scopes):
+            self.scopes, self.created = scopes, []
+
+        def bot_token_valid(self, token):
+            return token == "alt"
+
+        def bot_token_scopes(self, name):
+            return self.scopes
+
+        def client_token(self, name):
+            self.created.append(name)
+            return "neu", None
+
+        def bot_token_names(self):
+            return []
+
+    def run_with(self, scopes):
+        a = self.FakeAdapter(scopes)
+        gitlink.write_private(gitlink.inst_dir("x") / "token", "alt\n")
+        gitlink.ensure_client_token(a, "x", {}, "client")
+        return a, (gitlink.inst_dir("x") / "token").read_text().strip()
+
+    def test_client_scopes_include_read_organization(self):
+        self.assertIn("read:organization", gitlink.GiteaFamily.client_scopes)
+
+    def test_token_missing_a_scope_is_renewed(self):
+        a, token = self.run_with(["write:repository", "write:issue", "read:user"])
+        self.assertEqual((a.created, token), ([gitlink.CLIENT_TOKEN_PREFIX + "client"], "neu"))
+
+    def test_token_with_all_scopes_is_kept(self):
+        a, token = self.run_with(list(gitlink.GiteaFamily.client_scopes) + ["read:misc"])
+        self.assertEqual((a.created, token), ([], "alt"))
+
+    def test_unknown_scopes_keep_token(self):
+        a, token = self.run_with(None)
+        self.assertEqual((a.created, token), ([], "alt"))
+
+
 class Validation(unittest.TestCase):
     def test_names(self):
         self.assertEqual(gitlink.valid_name("localhost-3000"), "localhost-3000")

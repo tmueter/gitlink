@@ -935,7 +935,8 @@ class GiteaFamily:
     name = cli = label = None
     api_prefix = "/api/v1"
     admin_scopes = "write:admin,write:repository,write:user,write:issue,write:organization"
-    client_scopes = ["write:repository", "write:issue", "read:user"]
+    # read:organization: forgejo-mcp und gitea-mcp lösen Labels immer auch gegen Org-Labels auf.
+    client_scopes = ["write:repository", "write:issue", "read:user", "read:organization"]
 
     def __init__(self, cfg, operator=None):
         self.cfg = cfg
@@ -1083,6 +1084,13 @@ class GiteaFamily:
     def bot_token_valid(self, token):
         status, me = Api(self.base, ("token", token), self.api_prefix).call("GET", "/user", soft=(401, 403))
         return status == 200 and me.get("login") == BOT
+
+    def bot_token_scopes(self, name):
+        """Scopes des Bot-Tokens `name`; None, wenn es ihn nicht gibt oder die Plattform keine meldet."""
+        for tok in self.list_tokens(BOT):
+            if tok["name"] == name:
+                return tok.get("scopes")
+        return None
 
     def bot_token_names(self):
         return [tok["name"] for tok in self.list_tokens(BOT)]
@@ -1489,11 +1497,13 @@ def ensure_client_key(a, inst, client):
 
 
 def ensure_client_token(a, inst, cfg, client):
-    """Behält einen gültigen Token mit aktuellem Namen; sonst neu erzeugen und Altlasten entfernen."""
+    """Behält einen gültigen Token mit aktuellem Namen und allen Scopes; sonst neu erzeugen und Altlasten entfernen."""
     path = inst_dir(inst) / "token"
     name = CLIENT_TOKEN_PREFIX + client
     if path.exists() and cfg.get("token_name", name) == name and a.bot_token_valid(path.read_text().strip()):
-        return None
+        scopes = a.bot_token_scopes(name)
+        if scopes is None or set(a.client_scopes) <= set(scopes):
+            return None
     token, expires = a.client_token(name)
     write_private(path, token + "\n")
     legacy = LEGACY_PREFIXES[1] + client
